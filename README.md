@@ -38,6 +38,8 @@ make test
 - `EDGE_BARS`: number of bars to fetch, default `60`
 - `EDGE_PROVIDER`: provider selected by configuration, `synthetic` or `alpaca`
 - `API_BASE_URL`: optional API endpoint used by the decision publisher
+- `MARKET_HOLIDAYS`: comma-separated `YYYY-MM-DD` holiday dates
+- `MARKET_EARLY_CLOSES`: comma-separated `YYYY-MM-DD=HH:MM` early close rules
 - `ALPACA_API_KEY_ID`: required when `EDGE_PROVIDER=alpaca`
 - `ALPACA_API_SECRET_KEY`: required when `EDGE_PROVIDER=alpaca`
 - `ALPACA_DATA_FEED`: Alpaca data feed, default `iex`
@@ -45,5 +47,7 @@ make test
 ## Notes
 
 - The `alpaca` provider talks to the Alpaca market-data API. Its bars are normalized later by the ingestion pipeline before they reach the signal engine.
-- The selected provider is visible in the CLI output together with the full provider policy matrix so the tradeoff stays explicit.
+- The session calendar short-circuits execution when the market is closed.
+- The calendar uses `America/New_York` by default and currently reads holiday and early-close overrides from environment variables.
 - The provider contract is intentionally narrow so data vendors can be swapped without changing the engine.
+- The selected provider is visible in the CLI output together with the full provider policy matrix so the tradeoff stays explicit.

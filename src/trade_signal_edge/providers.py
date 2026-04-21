@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Protocol, Sequence, cast, get_args
 from urllib import error, parse, request
@@ -151,8 +151,8 @@ class AlpacaProvider:
 @dataclass(slots=True)
 class ProviderConfig:
     name: ProviderName = "synthetic"
-    alpaca_api_key_id: str | None = None
-    alpaca_api_secret_key: str | None = None
+    alpaca_api_key_id: str | None = field(default=None, repr=False)
+    alpaca_api_secret_key: str | None = field(default=None, repr=False)
     alpaca_feed: str = "iex"
 
 

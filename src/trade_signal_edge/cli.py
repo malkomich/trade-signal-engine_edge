@@ -8,6 +8,7 @@ from typing import get_args
 
 from .config import load_runtime_config
 from .indicators import IndicatorCalculator
+from .ingestion import ingest_bars
 from .models import TradeState
 from .publisher import HttpDecisionPublisher
 from .providers import (
@@ -15,8 +16,8 @@ from .providers import (
     build_provider,
     load_provider_config,
     provider_policies,
-    selected_provider_policy,
     resolve_provider_name,
+    selected_provider_policy,
 )
 from .signal_engine import SignalEngine
 from .state_machine import StateMachine
@@ -53,7 +54,7 @@ def main() -> None:
 
     try:
         provider_config = load_provider_config(runtime)
-        if args.provider:
+        if args.provider is not None:
             provider_config.name = resolve_provider_name(args.provider)
         provider = build_provider(provider_config)
     except (ValueError, NotImplementedError) as error:
@@ -70,7 +71,21 @@ def main() -> None:
         )
         raise SystemExit(1) from error
 
-    bars_series = provider.history(symbol, bars)
+    history = provider.history(symbol, bars)
+    if not history:
+        print(
+            json.dumps(
+                {
+                    "error": "No history found",
+                    "symbol": symbol,
+                    "provider": provider_config.name,
+                },
+                indent=2,
+            )
+        )
+        return
+
+    bars_series = ingest_bars(history)
     indicator_calculator = IndicatorCalculator()
     snapshot = indicator_calculator.compute(bars_series)
     signal_engine = SignalEngine()
