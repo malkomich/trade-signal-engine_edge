@@ -21,3 +21,5 @@ ENV PATH="/app/.venv/bin:${PATH}"
 
 ENTRYPOINT ["python", "-m", "trade_signal_edge"]
 CMD ["--watch", "--interval-seconds", "60"]
+
+EXPOSE 8081

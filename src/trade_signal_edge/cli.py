@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ from .providers import (
     resolve_provider_name,
     selected_provider_policy,
 )
+from .status_server import start_status_server
 from .signal_engine import SignalEngine
 from .state_machine import StateMachine
 from .session_calendar import load_session_calendar
@@ -37,6 +39,7 @@ def main() -> None:
     parser.add_argument("--api-base-url", default=None)
     parser.add_argument("--watch", action="store_true", help="Keep the worker running and poll on an interval.")
     parser.add_argument("--interval-seconds", type=int, default=60, help="Polling interval used with --watch.")
+    parser.add_argument("--http-port", type=int, default=int(os.getenv("EDGE_HTTP_PORT", "8081")))
     args = parser.parse_args()
 
     if args.watch:
@@ -57,39 +60,49 @@ def main() -> None:
 def _run_watch_loop(args: argparse.Namespace) -> None:
     interval = max(args.interval_seconds, 1)
     backoff = interval
-    while True:
-        try:
-            runtime = load_runtime_config()
-            _run_once(args, runtime)
-            backoff = interval
-        except (OSError, ValueError, ConfigError) as error:
-            print(_json_error("config", error))
-            time.sleep(backoff)
-            backoff = min(backoff * 2, 300)
-            continue
-        except Exception as error:
-            print(_json_error("runtime", error))
-            time.sleep(backoff)
-            backoff = min(backoff * 2, 300)
-            continue
-        time.sleep(interval)
+    status_server = start_status_server(max(args.http_port, 1))
+    try:
+        while True:
+            try:
+                runtime = load_runtime_config()
+                report = _run_once(args, runtime)
+                status_server.store.update_run(
+                    session_active=bool(report.get("session_active", True)),
+                    symbol=report.get("symbol"),
+                    provider=report.get("provider"),
+                    action=report.get("action"),
+                    next_state=report.get("next_state"),
+                    last_error=report.get("error"),
+                )
+                backoff = interval
+            except (OSError, ValueError, ConfigError) as error:
+                print(_json_error("config", error))
+                status_server.store.update_run(session_active=False, last_error=str(error))
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 300)
+                continue
+            except Exception as error:
+                print(_json_error("runtime", error))
+                status_server.store.update_run(session_active=False, last_error=str(error))
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 300)
+                continue
+            time.sleep(interval)
+    finally:
+        status_server.close()
 
 
-def _run_once(args: argparse.Namespace, runtime) -> None:
+def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     calendar = load_session_calendar()
     current_time = datetime.now(tz=timezone.utc)
     if not calendar.is_open(current_time):
-        print(
-            json.dumps(
-                {
-                    "session_active": False,
-                    "timestamp": current_time.isoformat(),
-                    "timezone": calendar.timezone_name,
-                },
-                indent=2,
-            )
-        )
-        return
+        report = {
+            "session_active": False,
+            "timestamp": current_time.isoformat(),
+            "timezone": calendar.timezone_name,
+        }
+        print(json.dumps(report, indent=2))
+        return report
 
     symbol = args.symbol or runtime.symbol
     bars = args.bars or runtime.bars
@@ -105,17 +118,16 @@ def _run_once(args: argparse.Namespace, runtime) -> None:
 
     history = provider.history(symbol, bars)
     if not history:
-        print(
-            json.dumps(
-                {
-                    "error": "No history found",
-                    "symbol": symbol,
-                    "provider": provider_config.name,
-                },
-                indent=2,
-            )
-        )
-        return
+        report = {
+            "session_active": True,
+            "error": "No history found",
+            "symbol": symbol,
+            "provider": provider_config.name,
+            "action": None,
+            "next_state": None,
+        }
+        print(json.dumps(report, indent=2))
+        return report
 
     bars_series = ingest_bars(history)
     indicator_calculator = IndicatorCalculator()
@@ -154,6 +166,14 @@ def _run_once(args: argparse.Namespace, runtime) -> None:
             indent=2,
         )
     )
+    return {
+        "session_active": True,
+        "symbol": symbol,
+        "provider": provider_config.name,
+        "action": decision.action.value,
+        "next_state": next_state.value,
+        "timestamp": snapshot.timestamp.isoformat(),
+    }
 
 
 def _json_error(kind: str, error: Exception) -> str:
