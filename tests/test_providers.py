@@ -1,6 +1,6 @@
 import pytest
 
-from trade_signal_edge.providers import ProviderSelection, build_provider
+from trade_signal_edge.providers import ProviderSelection, build_provider, load_provider_selection, resolve_provider_name
 
 
 def test_build_provider_defaults_to_synthetic() -> None:
@@ -24,3 +24,27 @@ def test_build_provider_selects_alpaca_when_configured() -> None:
     )
 
     assert provider.__class__.__name__ == "AlpacaProvider"
+
+
+def test_resolve_provider_name_accepts_case_insensitive_values() -> None:
+    assert resolve_provider_name("ALPACA") == "alpaca"
+    assert resolve_provider_name(" synthetic ") == "synthetic"
+
+
+def test_resolve_provider_name_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="unsupported provider"):
+        resolve_provider_name("invalid")
+
+
+def test_load_provider_selection_reads_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EDGE_PROVIDER", "alpaca")
+    monkeypatch.setenv("ALPACA_DATA_FEED", "sip")
+    monkeypatch.setenv("ALPACA_API_KEY_ID", "key")
+    monkeypatch.setenv("ALPACA_API_SECRET_KEY", "secret")
+
+    selection = load_provider_selection()
+
+    assert selection.name == "alpaca"
+    assert selection.alpaca_feed == "sip"
+    assert selection.alpaca_api_key_id == "key"
+    assert selection.alpaca_api_secret_key == "secret"

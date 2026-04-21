@@ -124,6 +124,9 @@ class ProviderSelection:
     alpaca_feed: str = "iex"
 
 
+ProviderConfig = ProviderSelection
+
+
 def resolve_provider_name(value: str | None) -> ProviderName:
     if value is None:
         return "synthetic"
