@@ -8,6 +8,11 @@ Python edge worker that ingests market data, normalizes bars, computes indicator
 - `uv` for dependency management
 - pytest for tests
 
+## External integrations
+
+- `Alpaca` provides the live market-data feed used to monitor stocks in near real time and to fetch the raw bars that feed the ingestion pipeline.
+- `synthetic` is the local fallback provider for development and tests when Alpaca credentials are not available.
+
 ## Run
 
 ```bash
@@ -34,6 +39,7 @@ make test
 
 ## Notes
 
+- The `alpaca` provider talks to the Alpaca market-data API. Its bars are normalized later by the ingestion pipeline before they reach the signal engine.
 - The session calendar short-circuits execution when the market is closed.
 - The calendar uses `America/New_York` by default and currently reads holiday and early-close overrides from environment variables.
 - The provider contract is intentionally narrow so data vendors can be swapped without changing the engine.
