@@ -5,8 +5,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal, Protocol, Sequence, cast, get_args
 from urllib import error, parse, request
 import json
-import os
 
+from .config import RuntimeConfig
 from .models import Bar
 
 ProviderName = Literal["synthetic", "alpaca"]
@@ -179,12 +179,12 @@ def selected_provider_policy(config: ProviderConfig) -> ProviderPolicy:
     raise NotImplementedError(f"provider {config.name!r} is not implemented")
 
 
-def load_provider_config() -> ProviderConfig:
+def load_provider_config(runtime: RuntimeConfig) -> ProviderConfig:
     return ProviderConfig(
-        name=resolve_provider_name(os.getenv("EDGE_PROVIDER")),
-        alpaca_api_key_id=os.getenv("ALPACA_API_KEY_ID"),
-        alpaca_api_secret_key=os.getenv("ALPACA_API_SECRET_KEY"),
-        alpaca_feed=os.getenv("ALPACA_DATA_FEED", "iex").strip().lower(),
+        name=resolve_provider_name(runtime.provider),
+        alpaca_api_key_id=runtime.alpaca_api_key_id,
+        alpaca_api_secret_key=runtime.alpaca_api_secret_key,
+        alpaca_feed=runtime.alpaca_feed,
     )
 
 

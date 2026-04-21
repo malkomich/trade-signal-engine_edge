@@ -5,7 +5,6 @@ import pytest
 from trade_signal_edge.providers import (
     ProviderConfig,
     build_provider,
-    load_provider_config,
     provider_policies,
     resolve_provider_name,
     selected_provider_policy,
@@ -39,20 +38,6 @@ def test_resolve_provider_name_rejects_invalid_values() -> None:
         resolve_provider_name("invalid")
 
 
-def test_load_provider_config_reads_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("EDGE_PROVIDER", "alpaca")
-    monkeypatch.setenv("ALPACA_DATA_FEED", "sip")
-    monkeypatch.setenv("ALPACA_API_KEY_ID", "key")
-    monkeypatch.setenv("ALPACA_API_SECRET_KEY", "secret")
-
-    config = load_provider_config()
-
-    assert config.name == "alpaca"
-    assert config.alpaca_feed == "sip"
-    assert config.alpaca_api_key_id == "key"
-    assert config.alpaca_api_secret_key == "secret"
-
-
 def test_build_provider_defaults_to_synthetic() -> None:
     provider = build_provider(ProviderConfig())
 
@@ -62,4 +47,3 @@ def test_build_provider_defaults_to_synthetic() -> None:
 def test_build_provider_requires_alpaca_credentials() -> None:
     with pytest.raises(ValueError, match="alpaca provider requires"):
         build_provider(ProviderConfig(name="alpaca"))
-
