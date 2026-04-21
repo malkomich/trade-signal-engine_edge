@@ -31,6 +31,10 @@ make test
 - `EDGE_BARS`: number of bars to fetch, default `60`
 - `EDGE_PROVIDER`: provider selected by configuration, `synthetic` or `alpaca`
 - `API_BASE_URL`: optional API endpoint used by the decision publisher
+- `EDGE_DEPLOYMENT_PROFILE`: deployment target label, default `pi`
+- `EDGE_LOG_LEVEL`: runtime log level surfaced in the CLI report, default `INFO`
+- `EDGE_METRICS_ENABLED`: enable the lightweight observability flag in the runtime report, default `false`
+- `EDGE_SECRET_SOURCE`: where runtime secrets come from, default `environment`
 - `MARKET_HOLIDAYS`: comma-separated `YYYY-MM-DD` holiday dates
 - `MARKET_EARLY_CLOSES`: comma-separated `YYYY-MM-DD=HH:MM` early close rules
 - `ALPACA_API_KEY_ID`: required when `EDGE_PROVIDER=alpaca`
@@ -43,3 +47,4 @@ make test
 - The session calendar short-circuits execution when the market is closed.
 - The calendar uses `America/New_York` by default and currently reads holiday and early-close overrides from environment variables.
 - The provider contract is intentionally narrow so data vendors can be swapped without changing the engine.
+- Runtime output includes the deployment profile, log level, metrics flag, and secret source so the Pi path stays explicit without checking secrets into the repository.
