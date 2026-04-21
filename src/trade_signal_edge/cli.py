@@ -40,7 +40,8 @@ def main() -> None:
         return
 
     provider_selection = load_provider_selection()
-    provider_selection.name = resolve_provider_name(args.provider or runtime.provider)
+    if args.provider:
+        provider_selection.name = resolve_provider_name(args.provider)
     provider = build_provider(provider_selection)
 
     symbol = args.symbol or runtime.symbol

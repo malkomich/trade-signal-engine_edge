@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Literal, Protocol, Sequence, cast
+from typing import Literal, Protocol, Sequence, cast, get_args
 from urllib import error, parse, request
 import json
 import os
@@ -128,8 +128,9 @@ def resolve_provider_name(value: str | None) -> ProviderName:
     if value is None:
         return "synthetic"
     normalized = value.strip().lower()
-    if normalized not in {"synthetic", "alpaca"}:
-        raise ValueError(f"unsupported provider {value!r}")
+    allowed = get_args(ProviderName)
+    if normalized not in allowed:
+        raise ValueError(f"unsupported provider {value!r}. Supported: {', '.join(allowed)}")
     return cast(ProviderName, normalized)
 
 
