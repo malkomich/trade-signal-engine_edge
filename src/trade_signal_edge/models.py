@@ -1,0 +1,95 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Mapping, Optional
+
+
+class TradeState(str, Enum):
+    FLAT = "FLAT"
+    ENTRY_SIGNALLED = "ENTRY_SIGNALLED"
+    ACCEPTED_OPEN = "ACCEPTED_OPEN"
+    REJECTED = "REJECTED"
+    EXPIRED = "EXPIRED"
+    EXIT_SIGNALLED = "EXIT_SIGNALLED"
+    CLOSED = "CLOSED"
+
+
+class SignalAction(str, Enum):
+    HOLD = "HOLD"
+    BUY_ALERT = "BUY_ALERT"
+    SELL_ALERT = "SELL_ALERT"
+
+
+@dataclass(frozen=True, slots=True)
+class Bar:
+    symbol: str
+    timestamp: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+
+
+@dataclass(frozen=True, slots=True)
+class IndicatorSnapshot:
+    symbol: str
+    timestamp: datetime
+    close: float
+    sma_fast: Optional[float] = None
+    sma_slow: Optional[float] = None
+    ema_fast: Optional[float] = None
+    ema_slow: Optional[float] = None
+    vwap: Optional[float] = None
+    rsi: Optional[float] = None
+    atr: Optional[float] = None
+    plus_di: Optional[float] = None
+    minus_di: Optional[float] = None
+    adx: Optional[float] = None
+    macd: Optional[float] = None
+    macd_signal: Optional[float] = None
+    macd_histogram: Optional[float] = None
+    stochastic_k: Optional[float] = None
+    stochastic_d: Optional[float] = None
+
+
+def default_signal_weights() -> dict[str, float]:
+    return {
+        "sma": 1.6,
+        "ema": 1.4,
+        "vwap": 1.1,
+        "rsi": 1.0,
+        "atr": 0.7,
+        "dm": 0.8,
+        "macd": 1.2,
+        "stochastic": 0.8,
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class SignalConfig:
+    entry_threshold: float = 0.65
+    exit_threshold: float = 0.55
+    weights: Mapping[str, float] = field(default_factory=default_signal_weights)
+
+
+@dataclass(frozen=True, slots=True)
+class SignalDecision:
+    symbol: str
+    timestamp: datetime
+    entry_score: float
+    exit_score: float
+    action: SignalAction
+    reasons: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class TradeWindow:
+    window_id: str
+    symbol: str
+    opened_at: datetime
+    closed_at: Optional[datetime] = None
+    status: TradeState = TradeState.FLAT
+
