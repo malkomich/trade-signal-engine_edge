@@ -39,3 +39,11 @@ def test_load_runtime_config_reads_deployment_flags(monkeypatch):
     assert runtime.log_level == "DEBUG"
     assert runtime.metrics_enabled is True
     assert runtime.secret_source == "sealed-secret"
+
+
+def test_load_runtime_config_invalid_log_level_falls_back(monkeypatch):
+    monkeypatch.setenv("EDGE_LOG_LEVEL", "verbose")
+
+    runtime = load_runtime_config()
+
+    assert runtime.log_level == "INFO"
