@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Protocol, Sequence
+from typing import Literal, Protocol, Sequence, cast
 from urllib import error, parse, request
 import json
 import os
 
 from .models import Bar
+
+ProviderName = Literal["synthetic", "alpaca"]
 
 
 class MarketDataProvider(Protocol):
@@ -115,29 +117,38 @@ class AlpacaProvider:
 
 
 @dataclass(slots=True)
-class ProviderConfig:
-    name: str = "synthetic"
+class ProviderSelection:
+    name: ProviderName = "synthetic"
     alpaca_api_key_id: str | None = None
     alpaca_api_secret_key: str | None = None
     alpaca_feed: str = "iex"
 
 
-def load_provider_config() -> ProviderConfig:
-    return ProviderConfig(
-        name=os.getenv("EDGE_PROVIDER", "synthetic").strip().lower(),
+def resolve_provider_name(value: str | None) -> ProviderName:
+    if value is None:
+        return "synthetic"
+    normalized = value.strip().lower()
+    if normalized not in {"synthetic", "alpaca"}:
+        raise ValueError(f"unsupported provider {value!r}")
+    return cast(ProviderName, normalized)
+
+
+def load_provider_selection() -> ProviderSelection:
+    return ProviderSelection(
+        name=resolve_provider_name(os.getenv("EDGE_PROVIDER", "synthetic")),
         alpaca_api_key_id=os.getenv("ALPACA_API_KEY_ID"),
         alpaca_api_secret_key=os.getenv("ALPACA_API_SECRET_KEY"),
         alpaca_feed=os.getenv("ALPACA_DATA_FEED", "iex").strip().lower(),
     )
 
 
-def build_provider(config: ProviderConfig) -> MarketDataProvider:
-    if config.name == "alpaca":
-        if not config.alpaca_api_key_id or not config.alpaca_api_secret_key:
+def build_provider(selection: ProviderSelection) -> MarketDataProvider:
+    if selection.name == "alpaca":
+        if not selection.alpaca_api_key_id or not selection.alpaca_api_secret_key:
             raise ValueError("alpaca provider requires ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY")
         return AlpacaProvider(
-            api_key_id=config.alpaca_api_key_id,
-            api_secret_key=config.alpaca_api_secret_key,
-            feed=config.alpaca_feed,
+            api_key_id=selection.alpaca_api_key_id,
+            api_secret_key=selection.alpaca_api_secret_key,
+            feed=selection.alpaca_feed,
         )
     return SyntheticProvider()

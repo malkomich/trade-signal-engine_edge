@@ -9,7 +9,7 @@ from .config import load_runtime_config
 from .indicators import IndicatorCalculator
 from .models import TradeState
 from .publisher import HttpDecisionPublisher
-from .providers import build_provider, load_provider_config
+from .providers import build_provider, load_provider_selection, resolve_provider_name
 from .signal_engine import SignalEngine
 from .state_machine import StateMachine
 from .session_calendar import load_session_calendar
@@ -39,11 +39,9 @@ def main() -> None:
         )
         return
 
-    provider_config = load_provider_config()
-    provider_config.name = runtime.provider
-    if args.provider:
-        provider_config.name = args.provider
-    provider = build_provider(provider_config)
+    provider_selection = load_provider_selection()
+    provider_selection.name = resolve_provider_name(args.provider or runtime.provider)
+    provider = build_provider(provider_selection)
 
     symbol = args.symbol or runtime.symbol
     bars = args.bars or runtime.bars
