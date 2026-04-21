@@ -1,6 +1,15 @@
-import pytest
+from __future__ import annotations
 
-from trade_signal_edge.providers import ProviderSelection, build_provider, load_provider_selection, resolve_provider_name
+import pytest
+from typing import cast
+
+from trade_signal_edge.providers import (
+    ProviderSelection,
+    ProviderName,
+    build_provider,
+    load_provider_selection,
+    resolve_provider_name,
+)
 
 
 def test_build_provider_defaults_to_synthetic() -> None:
@@ -26,6 +35,13 @@ def test_build_provider_selects_alpaca_when_configured() -> None:
     assert provider.__class__.__name__ == "AlpacaProvider"
 
 
+def test_build_provider_rejects_unimplemented_provider_name() -> None:
+    provider = ProviderSelection(name=cast(ProviderName, "polygon"))
+
+    with pytest.raises(NotImplementedError, match="not implemented"):
+        build_provider(provider)
+
+
 def test_resolve_provider_name_accepts_case_insensitive_values() -> None:
     assert resolve_provider_name("ALPACA") == "alpaca"
     assert resolve_provider_name(" synthetic ") == "synthetic"
@@ -49,3 +65,12 @@ def test_load_provider_selection_reads_environment(monkeypatch: pytest.MonkeyPat
     assert selection.alpaca_feed == "sip"
     assert selection.alpaca_api_key_id == "key"
     assert selection.alpaca_api_secret_key == "secret"
+
+
+def test_provider_selection_repr_masks_secrets() -> None:
+    selection = ProviderSelection(name="alpaca", alpaca_api_key_id="key", alpaca_api_secret_key="secret")
+
+    rendered = repr(selection)
+
+    assert "secret" not in rendered
+    assert "alpaca_api_key_id" not in rendered
