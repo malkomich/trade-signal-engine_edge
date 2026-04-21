@@ -4,12 +4,13 @@ import argparse
 import json
 from dataclasses import asdict
 from datetime import datetime, timezone
+from typing import get_args
 
 from .config import load_runtime_config
 from .indicators import IndicatorCalculator
 from .models import TradeState
 from .publisher import HttpDecisionPublisher
-from .providers import build_provider, load_provider_selection, resolve_provider_name
+from .providers import ProviderName, build_provider, load_provider_selection, resolve_provider_name
 from .signal_engine import SignalEngine
 from .state_machine import StateMachine
 from .session_calendar import load_session_calendar
@@ -19,7 +20,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run a local sample signal evaluation.")
     parser.add_argument("--symbol", default="AAPL")
     parser.add_argument("--bars", type=int, default=60)
-    parser.add_argument("--provider", choices=["synthetic", "alpaca"], default=None)
+    parser.add_argument("--provider", choices=get_args(ProviderName), default=None)
     parser.add_argument("--api-base-url", default=None)
     args = parser.parse_args()
 

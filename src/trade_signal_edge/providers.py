@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Protocol, Sequence, cast, get_args
 from urllib import error, parse, request
@@ -119,13 +119,9 @@ class AlpacaProvider:
 @dataclass(slots=True)
 class ProviderSelection:
     name: ProviderName = "synthetic"
-    alpaca_api_key_id: str | None = None
-    alpaca_api_secret_key: str | None = None
+    alpaca_api_key_id: str | None = field(default=None, repr=False)
+    alpaca_api_secret_key: str | None = field(default=None, repr=False)
     alpaca_feed: str = "iex"
-
-
-# Backwards-compatible alias for callers that still import the old symbol.
-ProviderConfig = ProviderSelection
 
 
 def resolve_provider_name(value: str | None) -> ProviderName:
@@ -149,13 +145,15 @@ def load_provider_selection() -> ProviderSelection:
     )
 
 
-def build_provider(config: ProviderSelection) -> MarketDataProvider:
-    if config.name == "alpaca":
-        if not config.alpaca_api_key_id or not config.alpaca_api_secret_key:
+def build_provider(selection: ProviderSelection) -> MarketDataProvider:
+    if selection.name == "synthetic":
+        return SyntheticProvider()
+    if selection.name == "alpaca":
+        if not selection.alpaca_api_key_id or not selection.alpaca_api_secret_key:
             raise ValueError("alpaca provider requires ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY")
         return AlpacaProvider(
-            api_key_id=config.alpaca_api_key_id,
-            api_secret_key=config.alpaca_api_secret_key,
-            feed=config.alpaca_feed,
+            api_key_id=selection.alpaca_api_key_id,
+            api_secret_key=selection.alpaca_api_secret_key,
+            feed=selection.alpaca_feed,
         )
-    return SyntheticProvider()
+    raise NotImplementedError(f"provider {selection.name!r} is not implemented")
