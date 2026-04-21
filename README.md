@@ -13,6 +13,13 @@ Python edge worker that ingests market data, normalizes bars, computes indicator
 - `Alpaca` provides the live market-data feed used to monitor stocks in near real time and to fetch the raw bars that feed the ingestion pipeline.
 - `synthetic` is the local fallback provider for development and tests when Alpaca credentials are not available.
 
+## Provider matrix
+
+| Provider | Access model | Cost tier | Redistribution | Commercial use |
+| --- | --- | --- | --- | --- |
+| `synthetic` | Local-only generated data | Free | Safe for local development and tests because the bars are generated in-process | Development and test only |
+| `alpaca` | External market-data API | Account-plan dependent | Review Alpaca terms before sharing raw bars or derived market data outside the app boundary | Subject to the Alpaca account plan and market-data terms |
+
 ## Run
 
 ```bash
@@ -59,5 +66,6 @@ make test
 - The session calendar short-circuits execution when the market is closed.
 - The calendar uses `America/New_York` by default and currently reads holiday and early-close overrides from environment variables.
 - The provider contract is intentionally narrow so data vendors can be swapped without changing the engine.
+- The selected provider is visible in the CLI output together with the full provider policy matrix so the tradeoff stays explicit.
 - Runtime output includes the deployment profile, log level, metrics flag, and secret source so the Pi path stays explicit without checking secrets into the repository.
 - `--watch` keeps the worker alive and prints a fresh evaluation every interval so Dozzle can stream logs continuously.

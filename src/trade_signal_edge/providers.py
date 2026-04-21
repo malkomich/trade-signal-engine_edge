@@ -5,8 +5,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal, Protocol, Sequence, cast, get_args
 from urllib import error, parse, request
 import json
-import os
 
+from .config import RuntimeConfig
 from .models import Bar
 
 ProviderName = Literal["synthetic", "alpaca"]
@@ -15,6 +15,38 @@ ProviderName = Literal["synthetic", "alpaca"]
 class MarketDataProvider(Protocol):
     def history(self, symbol: str, bars: int) -> Sequence[Bar]:
         raise NotImplementedError
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderPolicy:
+    name: ProviderName
+    access_model: str
+    cost_tier: str
+    redistribution: str
+    commercial_use: str
+    notes: str
+    requires_credentials: bool = False
+
+
+PROVIDER_POLICIES: tuple[ProviderPolicy, ...] = (
+    ProviderPolicy(
+        name="synthetic",
+        access_model="local-only generated data",
+        cost_tier="free",
+        redistribution="safe for local development and tests because the bars are generated in-process",
+        commercial_use="development and test only",
+        notes="No external market-data license is involved.",
+    ),
+    ProviderPolicy(
+        name="alpaca",
+        access_model="external market-data API",
+        cost_tier="account-plan dependent",
+        redistribution="review Alpaca terms before sharing raw bars or derived market data outside the app boundary",
+        commercial_use="subject to the Alpaca account plan and market-data terms",
+        notes="Use this provider for live ingestion; keep API keys out of source control.",
+        requires_credentials=True,
+    ),
+)
 
 
 @dataclass(slots=True)
@@ -117,7 +149,7 @@ class AlpacaProvider:
 
 
 @dataclass(slots=True)
-class ProviderSelection:
+class ProviderConfig:
     name: ProviderName = "synthetic"
     alpaca_api_key_id: str | None = field(default=None, repr=False)
     alpaca_api_secret_key: str | None = field(default=None, repr=False)
@@ -136,24 +168,36 @@ def resolve_provider_name(value: str | None) -> ProviderName:
     return cast(ProviderName, normalized)
 
 
-def load_provider_selection() -> ProviderSelection:
-    return ProviderSelection(
-        name=resolve_provider_name(os.getenv("EDGE_PROVIDER")),
-        alpaca_api_key_id=os.getenv("ALPACA_API_KEY_ID"),
-        alpaca_api_secret_key=os.getenv("ALPACA_API_SECRET_KEY"),
-        alpaca_feed=os.getenv("ALPACA_DATA_FEED", "iex").strip().lower(),
+def provider_policies() -> tuple[ProviderPolicy, ...]:
+    return PROVIDER_POLICIES
+
+
+def selected_provider_policy(config: ProviderConfig) -> ProviderPolicy:
+    for policy in PROVIDER_POLICIES:
+        if policy.name == config.name:
+            return policy
+    raise NotImplementedError(f"provider {config.name!r} is not implemented")
+
+
+def load_provider_config(runtime: RuntimeConfig) -> ProviderConfig:
+    return ProviderConfig(
+        name=resolve_provider_name(runtime.provider),
+        alpaca_api_key_id=runtime.alpaca_api_key_id,
+        alpaca_api_secret_key=runtime.alpaca_api_secret_key,
+        alpaca_feed=runtime.alpaca_feed,
     )
 
 
-def build_provider(selection: ProviderSelection) -> MarketDataProvider:
-    if selection.name == "synthetic":
+def build_provider(config: ProviderConfig) -> MarketDataProvider:
+    if config.name == "synthetic":
         return SyntheticProvider()
-    if selection.name == "alpaca":
-        if not selection.alpaca_api_key_id or not selection.alpaca_api_secret_key:
+    if config.name == "alpaca":
+        if not config.alpaca_api_key_id or not config.alpaca_api_secret_key:
             raise ValueError("alpaca provider requires ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY")
+        # Raw bars are consumed for local computation only; redistribution policy is documented in the catalog.
         return AlpacaProvider(
-            api_key_id=selection.alpaca_api_key_id,
-            api_secret_key=selection.alpaca_api_secret_key,
-            feed=selection.alpaca_feed,
+            api_key_id=config.alpaca_api_key_id,
+            api_secret_key=config.alpaca_api_secret_key,
+            feed=config.alpaca_feed,
         )
-    raise NotImplementedError(f"provider {selection.name!r} is not implemented")
+    raise NotImplementedError(f"provider {config.name!r} is not implemented")

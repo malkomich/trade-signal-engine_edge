@@ -12,7 +12,14 @@ from .indicators import IndicatorCalculator
 from .ingestion import ingest_bars
 from .models import TradeState
 from .publisher import HttpDecisionPublisher
-from .providers import ProviderName, build_provider, load_provider_selection, resolve_provider_name
+from .providers import (
+    ProviderName,
+    build_provider,
+    load_provider_config,
+    provider_policies,
+    resolve_provider_name,
+    selected_provider_policy,
+)
 from .signal_engine import SignalEngine
 from .state_machine import StateMachine
 from .session_calendar import load_session_calendar
@@ -39,7 +46,20 @@ def main() -> None:
 def _run_watch_loop(args: argparse.Namespace, runtime) -> None:
     interval = max(args.interval_seconds, 1)
     while True:
-        _run_once(args, runtime)
+        try:
+            _run_once(args, runtime)
+        except Exception as error:
+            print(
+                json.dumps(
+                    {
+                        "error": {
+                            "kind": "runtime",
+                            "message": str(error),
+                        }
+                    },
+                    indent=2,
+                )
+            )
         time.sleep(interval)
 
 
@@ -59,15 +79,15 @@ def _run_once(args: argparse.Namespace, runtime) -> None:
         )
         return
 
-    provider_selection = load_provider_selection()
     symbol = args.symbol or runtime.symbol
     bars = args.bars or runtime.bars
     api_base_url = args.api_base_url or runtime.api_base_url
 
     try:
+        provider_config = load_provider_config(runtime)
         if args.provider is not None:
-            provider_selection.name = resolve_provider_name(args.provider)
-        provider = build_provider(provider_selection)
+            provider_config.name = resolve_provider_name(args.provider)
+        provider = build_provider(provider_config)
     except (ValueError, NotImplementedError) as error:
         print(
             json.dumps(
@@ -89,7 +109,7 @@ def _run_once(args: argparse.Namespace, runtime) -> None:
                 {
                     "error": "No history found",
                     "symbol": symbol,
-                    "provider": provider_selection.name,
+                    "provider": provider_config.name,
                 },
                 indent=2,
             )
@@ -113,12 +133,17 @@ def _run_once(args: argparse.Namespace, runtime) -> None:
                     "symbol": symbol,
                     "bars": bars,
                     "api_base_url": api_base_url,
+                    "provider": provider_config.name,
                 },
                 "observability": {
                     "log_level": runtime.log_level,
                     "metrics_enabled": runtime.metrics_enabled,
                     "secret_source": runtime.secret_source,
                     "deployment_profile": runtime.deployment_profile,
+                },
+                "provider_policy": {
+                    "selected": asdict(selected_provider_policy(provider_config)),
+                    "matrix": [asdict(policy) for policy in provider_policies()],
                 },
                 "snapshot": asdict(snapshot),
                 "decision": asdict(decision),

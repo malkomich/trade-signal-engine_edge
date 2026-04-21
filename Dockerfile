@@ -12,4 +12,9 @@ COPY src /app/src
 
 RUN uv sync --frozen --no-dev
 
+RUN useradd --create-home --home-dir /app --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
 ENTRYPOINT ["uv", "run", "python", "-m", "trade_signal_edge", "--watch", "--interval-seconds", "60"]
