@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from .config import load_runtime_config
 from .indicators import IndicatorCalculator
+from .ingestion import ingest_bars
 from .models import TradeState
 from .publisher import HttpDecisionPublisher
 from .providers import build_provider, load_provider_selection, resolve_provider_name
@@ -48,7 +49,7 @@ def main() -> None:
 
     symbol = args.symbol or runtime.symbol
     bars = args.bars or runtime.bars
-    bars_series = provider.history(symbol, bars)
+    bars_series = ingest_bars(provider.history(symbol, bars))
     indicator_calculator = IndicatorCalculator()
     snapshot = indicator_calculator.compute(bars_series)
     signal_engine = SignalEngine()
