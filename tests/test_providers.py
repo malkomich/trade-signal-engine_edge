@@ -29,6 +29,7 @@ def test_build_provider_selects_alpaca_when_configured() -> None:
 def test_resolve_provider_name_accepts_case_insensitive_values() -> None:
     assert resolve_provider_name("ALPACA") == "alpaca"
     assert resolve_provider_name(" synthetic ") == "synthetic"
+    assert resolve_provider_name("") == "synthetic"
 
 
 def test_resolve_provider_name_rejects_invalid_values() -> None:

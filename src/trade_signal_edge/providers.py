@@ -131,6 +131,8 @@ def resolve_provider_name(value: str | None) -> ProviderName:
     if value is None:
         return "synthetic"
     normalized = value.strip().lower()
+    if not normalized:
+        return "synthetic"
     allowed = get_args(ProviderName)
     if normalized not in allowed:
         raise ValueError(f"unsupported provider {value!r}. Supported: {', '.join(allowed)}")
@@ -139,7 +141,7 @@ def resolve_provider_name(value: str | None) -> ProviderName:
 
 def load_provider_selection() -> ProviderSelection:
     return ProviderSelection(
-        name=resolve_provider_name(os.getenv("EDGE_PROVIDER", "synthetic")),
+        name=resolve_provider_name(os.getenv("EDGE_PROVIDER")),
         alpaca_api_key_id=os.getenv("ALPACA_API_KEY_ID"),
         alpaca_api_secret_key=os.getenv("ALPACA_API_SECRET_KEY"),
         alpaca_feed=os.getenv("ALPACA_DATA_FEED", "iex").strip().lower(),
