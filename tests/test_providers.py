@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import cast, get_args
 
 import pytest
 
@@ -23,6 +23,10 @@ def test_provider_policies_cover_supported_providers() -> None:
     assert policies[0].cost_tier == "free"
     assert policies[1].requires_credentials is True
     assert "raw bars" in policies[1].redistribution
+
+
+def test_provider_policies_match_provider_name_union() -> None:
+    assert {policy.name for policy in provider_policies()} == set(get_args(ProviderName))
 
 
 def test_selected_provider_policy_tracks_config() -> None:
