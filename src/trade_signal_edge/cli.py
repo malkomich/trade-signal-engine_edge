@@ -76,6 +76,13 @@ def main() -> None:
     print(
         json.dumps(
             {
+                "runtime": asdict(runtime),
+                "observability": {
+                    "log_level": runtime.log_level,
+                    "metrics_enabled": runtime.metrics_enabled,
+                    "secret_source": runtime.secret_source,
+                    "deployment_profile": runtime.deployment_profile,
+                },
                 "snapshot": asdict(snapshot),
                 "decision": asdict(decision),
                 "next_state": next_state.value,
