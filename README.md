@@ -35,6 +35,9 @@ docker compose up -d --build
 The compose file sets the project name to `trade-signal-engine-server`, so Dozzle groups the
 edge container with the API service on the Raspberry Pi.
 
+Inside that shared Compose project, the edge worker talks to the API container through the
+service name `api`, so `API_BASE_URL` defaults to `http://api:8080` in Docker.
+
 The merge-to-`main` workflow SSHes into the Raspberry Pi, updates the checked-out repository, and
 recreates the container with the same compose project name.
 
@@ -56,9 +59,13 @@ make test
 - `EDGE_SECRET_SOURCE`: where runtime secrets come from, default `environment`
 - `MARKET_HOLIDAYS`: comma-separated `YYYY-MM-DD` holiday dates
 - `MARKET_EARLY_CLOSES`: comma-separated `YYYY-MM-DD=HH:MM` early close rules
-- `ALPACA_API_KEY_ID`: required when `EDGE_PROVIDER=alpaca`
-- `ALPACA_API_SECRET_KEY`: required when `EDGE_PROVIDER=alpaca`
+- `ALPACA_API_KEY_ID` or `ALPACA_API_KEY_ID_FILE`: required when `EDGE_PROVIDER=alpaca`
+- `ALPACA_API_SECRET_KEY` or `ALPACA_API_SECRET_KEY_FILE`: required when `EDGE_PROVIDER=alpaca`
 - `ALPACA_DATA_FEED`: Alpaca data feed, default `iex`
+
+When running in Docker on the Raspberry Pi, point `ALPACA_API_KEY_ID_FILE` and
+`ALPACA_API_SECRET_KEY_FILE` at root-owned files outside the repository so the credential values
+stay out of the rendered compose config and the container inspect output.
 
 ## Notes
 

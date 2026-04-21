@@ -8,18 +8,14 @@ on:
 
 jobs:
   deploy:
+    permissions:
+      contents: read
     concurrency:
       group: deploy-edge-${{ github.ref }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-
       - name: Deploy on Raspberry Pi
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
         with:
@@ -30,7 +26,19 @@ jobs:
           script: |
             set -e
             cd /opt/trade-signal-engine/edge
-            git fetch origin main
+            export ALPACA_API_KEY_ID_FILE=/opt/trade-signal-engine/edge/.secrets/alpaca_api_key_id
+            export ALPACA_API_SECRET_KEY_FILE=/opt/trade-signal-engine/edge/.secrets/alpaca_api_secret_key
+            git fetch --prune origin
+            git checkout main
             git reset --hard "${{ github.sha }}"
             docker image prune -f
             docker compose up -d --build
+            container_id="$(docker compose ps -q edge)"
+            for _ in $(seq 1 30); do
+              if [ -n "$container_id" ] && [ "$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null || echo false)" = "true" ]; then
+                exit 0
+              fi
+              sleep 2
+            done
+            docker compose logs --no-color edge
+            exit 1

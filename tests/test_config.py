@@ -59,6 +59,23 @@ def test_load_runtime_config_reads_environment(monkeypatch) -> None:
     assert runtime.secret_source == "sealed-secret"
 
 
+def test_load_runtime_config_reads_secret_files(monkeypatch, tmp_path) -> None:
+    key_id = tmp_path / "alpaca_key_id"
+    key_secret = tmp_path / "alpaca_key_secret"
+    key_id.write_text("key-file", encoding="utf-8")
+    key_secret.write_text("secret-file", encoding="utf-8")
+
+    monkeypatch.delenv("ALPACA_API_KEY_ID", raising=False)
+    monkeypatch.delenv("ALPACA_API_SECRET_KEY", raising=False)
+    monkeypatch.setenv("ALPACA_API_KEY_ID_FILE", str(key_id))
+    monkeypatch.setenv("ALPACA_API_SECRET_KEY_FILE", str(key_secret))
+
+    runtime = load_runtime_config()
+
+    assert runtime.alpaca_api_key_id == "key-file"
+    assert runtime.alpaca_api_secret_key == "secret-file"
+
+
 def test_load_runtime_config_invalid_log_level_falls_back(monkeypatch) -> None:
     monkeypatch.setenv("EDGE_LOG_LEVEL", "verbose")
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+from pathlib import Path
 
 
 @dataclass(slots=True)
@@ -27,8 +28,8 @@ def load_runtime_config() -> RuntimeConfig:
         api_base_url=os.getenv("API_BASE_URL", defaults.api_base_url),
         provider=(os.getenv("EDGE_PROVIDER", defaults.provider) or defaults.provider).strip().lower(),
         alpaca_feed=(os.getenv("ALPACA_DATA_FEED", defaults.alpaca_feed) or defaults.alpaca_feed).strip().lower(),
-        alpaca_api_key_id=os.getenv("ALPACA_API_KEY_ID"),
-        alpaca_api_secret_key=os.getenv("ALPACA_API_SECRET_KEY"),
+        alpaca_api_key_id=_read_optional_value("ALPACA_API_KEY_ID", "ALPACA_API_KEY_ID_FILE"),
+        alpaca_api_secret_key=_read_optional_value("ALPACA_API_SECRET_KEY", "ALPACA_API_SECRET_KEY_FILE"),
         deployment_profile=(os.getenv("EDGE_DEPLOYMENT_PROFILE", defaults.deployment_profile) or defaults.deployment_profile).strip().lower(),
         log_level=_parse_log_level(os.getenv("EDGE_LOG_LEVEL"), defaults.log_level),
         metrics_enabled=_parse_bool(os.getenv("EDGE_METRICS_ENABLED")),
@@ -47,3 +48,14 @@ def _parse_bool(value: str | None) -> bool:
     if value is None:
         return False
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _read_optional_value(value_env: str, file_env: str) -> str | None:
+    file_path = os.getenv(file_env)
+    if file_path:
+        return Path(file_path).read_text(encoding="utf-8").strip() or None
+    value = os.getenv(value_env)
+    if value is None:
+        return None
+    candidate = value.strip()
+    return candidate or None

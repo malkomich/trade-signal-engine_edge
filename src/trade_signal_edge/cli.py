@@ -25,6 +25,10 @@ from .state_machine import StateMachine
 from .session_calendar import load_session_calendar
 
 
+class ConfigError(RuntimeError):
+    """Raised when the current runtime configuration cannot be used."""
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a local sample signal evaluation.")
     parser.add_argument("--symbol", default=None)
@@ -35,31 +39,39 @@ def main() -> None:
     parser.add_argument("--interval-seconds", type=int, default=60, help="Polling interval used with --watch.")
     args = parser.parse_args()
 
-    runtime = load_runtime_config()
     if args.watch:
-        _run_watch_loop(args, runtime)
+        _run_watch_loop(args)
         return
 
-    _run_once(args, runtime)
+    try:
+        runtime = load_runtime_config()
+        _run_once(args, runtime)
+    except (ConfigError, OSError, ValueError) as error:
+        print(_json_error("config", error))
+        raise SystemExit(1) from error
+    except Exception as error:
+        print(_json_error("runtime", error))
+        raise SystemExit(1) from error
 
 
-def _run_watch_loop(args: argparse.Namespace, runtime) -> None:
+def _run_watch_loop(args: argparse.Namespace) -> None:
     interval = max(args.interval_seconds, 1)
+    backoff = interval
     while True:
         try:
+            runtime = load_runtime_config()
             _run_once(args, runtime)
+            backoff = interval
+        except (OSError, ValueError, ConfigError) as error:
+            print(_json_error("config", error))
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 300)
+            continue
         except Exception as error:
-            print(
-                json.dumps(
-                    {
-                        "error": {
-                            "kind": "runtime",
-                            "message": str(error),
-                        }
-                    },
-                    indent=2,
-                )
-            )
+            print(_json_error("runtime", error))
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 300)
+            continue
         time.sleep(interval)
 
 
@@ -89,18 +101,7 @@ def _run_once(args: argparse.Namespace, runtime) -> None:
             provider_config.name = resolve_provider_name(args.provider)
         provider = build_provider(provider_config)
     except (ValueError, NotImplementedError) as error:
-        print(
-            json.dumps(
-                {
-                    "error": {
-                        "kind": "config",
-                        "message": str(error),
-                    }
-                },
-                indent=2,
-            )
-        )
-        raise SystemExit(1) from error
+        raise ConfigError(str(error)) from error
 
     history = provider.history(symbol, bars)
     if not history:
@@ -152,4 +153,16 @@ def _run_once(args: argparse.Namespace, runtime) -> None:
             default=str,
             indent=2,
         )
+    )
+
+
+def _json_error(kind: str, error: Exception) -> str:
+    return json.dumps(
+        {
+            "error": {
+                "kind": kind,
+                "message": str(error),
+            }
+        },
+        indent=2,
     )

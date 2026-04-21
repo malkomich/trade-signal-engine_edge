@@ -17,4 +17,7 @@ RUN useradd --create-home --home-dir /app --shell /usr/sbin/nologin appuser \
 
 USER appuser
 
-ENTRYPOINT ["uv", "run", "python", "-m", "trade_signal_edge", "--watch", "--interval-seconds", "60"]
+ENV PATH="/app/.venv/bin:${PATH}"
+
+ENTRYPOINT ["python", "-m", "trade_signal_edge"]
+CMD ["--watch", "--interval-seconds", "60"]
