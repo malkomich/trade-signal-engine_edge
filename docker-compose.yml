@@ -1,0 +1,36 @@
+name: trade-signal-engine-server
+
+services:
+  edge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      EDGE_SYMBOL: ${EDGE_SYMBOL:-AAPL}
+      EDGE_BARS: ${EDGE_BARS:-60}
+      EDGE_PROVIDER: ${EDGE_PROVIDER:-synthetic}
+      API_BASE_URL: ${API_BASE_URL:-http://api:8080}
+      EDGE_DEPLOYMENT_PROFILE: ${EDGE_DEPLOYMENT_PROFILE:-pi}
+      EDGE_LOG_LEVEL: ${EDGE_LOG_LEVEL:-INFO}
+      EDGE_METRICS_ENABLED: ${EDGE_METRICS_ENABLED:-false}
+      EDGE_SECRET_SOURCE: ${EDGE_SECRET_SOURCE:-environment}
+      MARKET_HOLIDAYS: ${MARKET_HOLIDAYS:-}
+      MARKET_EARLY_CLOSES: ${MARKET_EARLY_CLOSES:-}
+      ALPACA_DATA_FEED: ${ALPACA_DATA_FEED:-iex}
+      ALPACA_API_KEY_ID_FILE: ${ALPACA_API_KEY_ID_FILE:-}
+      ALPACA_API_SECRET_KEY_FILE: ${ALPACA_API_SECRET_KEY_FILE:-}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "from pathlib import Path; import sys; cmdline = Path('/proc/1/cmdline').read_bytes().decode('utf-8', 'ignore'); sys.exit(0 if 'trade_signal_edge' in cmdline else 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    mem_limit: 256m
+    cpus: "0.50"
