@@ -1,0 +1,24 @@
+name: trade-signal-engine-server
+
+services:
+  edge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      EDGE_SYMBOL: ${EDGE_SYMBOL:-AAPL}
+      EDGE_BARS: ${EDGE_BARS:-60}
+      EDGE_PROVIDER: ${EDGE_PROVIDER:-synthetic}
+      API_BASE_URL: ${API_BASE_URL:-http://host.docker.internal:18080}
+      EDGE_DEPLOYMENT_PROFILE: ${EDGE_DEPLOYMENT_PROFILE:-pi}
+      EDGE_LOG_LEVEL: ${EDGE_LOG_LEVEL:-INFO}
+      EDGE_METRICS_ENABLED: ${EDGE_METRICS_ENABLED:-true}
+      EDGE_SECRET_SOURCE: ${EDGE_SECRET_SOURCE:-environment}
+      MARKET_HOLIDAYS: ${MARKET_HOLIDAYS:-}
+      MARKET_EARLY_CLOSES: ${MARKET_EARLY_CLOSES:-}
+      ALPACA_API_KEY_ID: ${ALPACA_API_KEY_ID:-}
+      ALPACA_API_SECRET_KEY: ${ALPACA_API_SECRET_KEY:-}
+      ALPACA_DATA_FEED: ${ALPACA_DATA_FEED:-iex}
+    extra_hosts:
+      - host.docker.internal:host-gateway

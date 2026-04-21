@@ -19,6 +19,18 @@ Python edge worker that ingests market data, normalizes bars, computes indicator
 make run
 ```
 
+## Run in Docker
+
+```bash
+docker compose up -d --build
+```
+
+The compose file sets the project name to `trade-signal-engine-server`, so Dozzle groups the
+edge container with the API service on the Raspberry Pi.
+
+The merge-to-`main` workflow SSHes into the Raspberry Pi, updates the checked-out repository, and
+recreates the container with the same compose project name.
+
 ## Test
 
 ```bash
@@ -48,3 +60,4 @@ make test
 - The calendar uses `America/New_York` by default and currently reads holiday and early-close overrides from environment variables.
 - The provider contract is intentionally narrow so data vendors can be swapped without changing the engine.
 - Runtime output includes the deployment profile, log level, metrics flag, and secret source so the Pi path stays explicit without checking secrets into the repository.
+- `--watch` keeps the worker alive and prints a fresh evaluation every interval so Dozzle can stream logs continuously.

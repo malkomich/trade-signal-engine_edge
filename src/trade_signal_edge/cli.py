@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import get_args
@@ -23,9 +24,26 @@ def main() -> None:
     parser.add_argument("--bars", type=int, default=None)
     parser.add_argument("--provider", choices=get_args(ProviderName), default=None)
     parser.add_argument("--api-base-url", default=None)
+    parser.add_argument("--watch", action="store_true", help="Keep the worker running and poll on an interval.")
+    parser.add_argument("--interval-seconds", type=int, default=60, help="Polling interval used with --watch.")
     args = parser.parse_args()
 
     runtime = load_runtime_config()
+    if args.watch:
+        _run_watch_loop(args, runtime)
+        return
+
+    _run_once(args, runtime)
+
+
+def _run_watch_loop(args: argparse.Namespace, runtime) -> None:
+    interval = max(args.interval_seconds, 1)
+    while True:
+        _run_once(args, runtime)
+        time.sleep(interval)
+
+
+def _run_once(args: argparse.Namespace, runtime) -> None:
     calendar = load_session_calendar()
     current_time = datetime.now(tz=timezone.utc)
     if not calendar.is_open(current_time):
@@ -42,13 +60,28 @@ def main() -> None:
         return
 
     provider_selection = load_provider_selection()
-    if args.provider is not None:
-        provider_selection.name = resolve_provider_name(args.provider)
-    provider = build_provider(provider_selection)
-
     symbol = args.symbol or runtime.symbol
     bars = args.bars or runtime.bars
     api_base_url = args.api_base_url or runtime.api_base_url
+
+    try:
+        if args.provider is not None:
+            provider_selection.name = resolve_provider_name(args.provider)
+        provider = build_provider(provider_selection)
+    except (ValueError, NotImplementedError) as error:
+        print(
+            json.dumps(
+                {
+                    "error": {
+                        "kind": "config",
+                        "message": str(error),
+                    }
+                },
+                indent=2,
+            )
+        )
+        raise SystemExit(1) from error
+
     history = provider.history(symbol, bars)
     if not history:
         print(
