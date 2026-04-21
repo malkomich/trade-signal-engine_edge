@@ -2,17 +2,51 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Protocol, Sequence
+from typing import Literal, Protocol, Sequence, cast, get_args
 from urllib import error, parse, request
 import json
 import os
 
 from .models import Bar
 
+ProviderName = Literal["synthetic", "alpaca"]
+
 
 class MarketDataProvider(Protocol):
     def history(self, symbol: str, bars: int) -> Sequence[Bar]:
         raise NotImplementedError
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderPolicy:
+    name: ProviderName
+    access_model: str
+    cost_tier: str
+    redistribution: str
+    commercial_use: str
+    notes: str
+    requires_credentials: bool = False
+
+
+PROVIDER_POLICIES: tuple[ProviderPolicy, ...] = (
+    ProviderPolicy(
+        name="synthetic",
+        access_model="local-only generated data",
+        cost_tier="free",
+        redistribution="safe for local development and tests because the bars are generated in-process",
+        commercial_use="development and test only",
+        notes="No external market-data license is involved.",
+    ),
+    ProviderPolicy(
+        name="alpaca",
+        access_model="external market-data API",
+        cost_tier="account-plan dependent",
+        redistribution="review Alpaca terms before sharing raw bars or derived market data outside the app boundary",
+        commercial_use="subject to the Alpaca account plan and market-data terms",
+        notes="Use this provider for live ingestion; keep API keys out of source control.",
+        requires_credentials=True,
+    ),
+)
 
 
 @dataclass(slots=True)
@@ -116,15 +150,38 @@ class AlpacaProvider:
 
 @dataclass(slots=True)
 class ProviderConfig:
-    name: str = "synthetic"
+    name: ProviderName = "synthetic"
     alpaca_api_key_id: str | None = None
     alpaca_api_secret_key: str | None = None
     alpaca_feed: str = "iex"
 
 
+def resolve_provider_name(value: str | None) -> ProviderName:
+    if value is None:
+        return "synthetic"
+    normalized = value.strip().lower()
+    if not normalized:
+        return "synthetic"
+    allowed = get_args(ProviderName)
+    if normalized not in allowed:
+        raise ValueError(f"unsupported provider {value!r}. Supported: {', '.join(allowed)}")
+    return cast(ProviderName, normalized)
+
+
+def provider_policies() -> tuple[ProviderPolicy, ...]:
+    return PROVIDER_POLICIES
+
+
+def selected_provider_policy(config: ProviderConfig) -> ProviderPolicy:
+    for policy in PROVIDER_POLICIES:
+        if policy.name == config.name:
+            return policy
+    raise NotImplementedError(f"provider {config.name!r} is not implemented")
+
+
 def load_provider_config() -> ProviderConfig:
     return ProviderConfig(
-        name=os.getenv("EDGE_PROVIDER", "synthetic").strip().lower(),
+        name=resolve_provider_name(os.getenv("EDGE_PROVIDER")),
         alpaca_api_key_id=os.getenv("ALPACA_API_KEY_ID"),
         alpaca_api_secret_key=os.getenv("ALPACA_API_SECRET_KEY"),
         alpaca_feed=os.getenv("ALPACA_DATA_FEED", "iex").strip().lower(),
@@ -132,12 +189,15 @@ def load_provider_config() -> ProviderConfig:
 
 
 def build_provider(config: ProviderConfig) -> MarketDataProvider:
+    if config.name == "synthetic":
+        return SyntheticProvider()
     if config.name == "alpaca":
         if not config.alpaca_api_key_id or not config.alpaca_api_secret_key:
             raise ValueError("alpaca provider requires ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY")
+        # Raw bars are consumed for local computation only; redistribution policy is documented in the catalog.
         return AlpacaProvider(
             api_key_id=config.alpaca_api_key_id,
             api_secret_key=config.alpaca_api_secret_key,
             feed=config.alpaca_feed,
         )
-    return SyntheticProvider()
+    raise NotImplementedError(f"provider {config.name!r} is not implemented")

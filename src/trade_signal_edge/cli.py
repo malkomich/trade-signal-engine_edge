@@ -4,12 +4,20 @@ import argparse
 import json
 from dataclasses import asdict
 from datetime import datetime, timezone
+from typing import get_args
 
 from .config import load_runtime_config
 from .indicators import IndicatorCalculator
 from .models import TradeState
 from .publisher import HttpDecisionPublisher
-from .providers import build_provider, load_provider_config
+from .providers import (
+    ProviderName,
+    build_provider,
+    load_provider_config,
+    provider_policies,
+    resolve_provider_name,
+    selected_provider_policy,
+)
 from .signal_engine import SignalEngine
 from .state_machine import StateMachine
 from .session_calendar import load_session_calendar
@@ -19,7 +27,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run a local sample signal evaluation.")
     parser.add_argument("--symbol", default="AAPL")
     parser.add_argument("--bars", type=int, default=60)
-    parser.add_argument("--provider", choices=["synthetic", "alpaca"], default=None)
+    parser.add_argument("--provider", choices=get_args(ProviderName), default=None)
     parser.add_argument("--api-base-url", default=None)
     args = parser.parse_args()
 
@@ -40,9 +48,9 @@ def main() -> None:
         return
 
     provider_config = load_provider_config()
-    provider_config.name = runtime.provider
+    provider_config.name = resolve_provider_name(runtime.provider)
     if args.provider:
-        provider_config.name = args.provider
+        provider_config.name = resolve_provider_name(args.provider)
     provider = build_provider(provider_config)
 
     symbol = args.symbol or runtime.symbol
@@ -61,6 +69,10 @@ def main() -> None:
     print(
         json.dumps(
             {
+                "provider": {
+                    "selected": asdict(selected_provider_policy(provider_config)),
+                    "matrix": [asdict(policy) for policy in provider_policies()],
+                },
                 "snapshot": asdict(snapshot),
                 "decision": asdict(decision),
                 "next_state": next_state.value,
