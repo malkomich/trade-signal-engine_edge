@@ -124,6 +124,7 @@ class ProviderSelection:
     alpaca_feed: str = "iex"
 
 
+# Backwards-compatible alias for callers that still import the old symbol.
 ProviderConfig = ProviderSelection
 
 
@@ -148,13 +149,13 @@ def load_provider_selection() -> ProviderSelection:
     )
 
 
-def build_provider(selection: ProviderSelection) -> MarketDataProvider:
-    if selection.name == "alpaca":
-        if not selection.alpaca_api_key_id or not selection.alpaca_api_secret_key:
+def build_provider(config: ProviderSelection) -> MarketDataProvider:
+    if config.name == "alpaca":
+        if not config.alpaca_api_key_id or not config.alpaca_api_secret_key:
             raise ValueError("alpaca provider requires ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY")
         return AlpacaProvider(
-            api_key_id=selection.alpaca_api_key_id,
-            api_secret_key=selection.alpaca_api_secret_key,
-            feed=selection.alpaca_feed,
+            api_key_id=config.alpaca_api_key_id,
+            api_secret_key=config.alpaca_api_secret_key,
+            feed=config.alpaca_feed,
         )
     return SyntheticProvider()
