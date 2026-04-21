@@ -49,7 +49,21 @@ def main() -> None:
 
     symbol = args.symbol or runtime.symbol
     bars = args.bars or runtime.bars
-    bars_series = ingest_bars(provider.history(symbol, bars))
+    history = provider.history(symbol, bars)
+    if not history:
+        print(
+            json.dumps(
+                {
+                    "error": "No history found",
+                    "symbol": symbol,
+                    "provider": provider_selection.name,
+                },
+                indent=2,
+            )
+        )
+        return
+
+    bars_series = ingest_bars(history)
     indicator_calculator = IndicatorCalculator()
     snapshot = indicator_calculator.compute(bars_series)
     signal_engine = SignalEngine()

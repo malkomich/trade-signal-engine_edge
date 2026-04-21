@@ -7,6 +7,7 @@ from typing import Sequence
 from .models import Bar
 
 BAR_INTERVAL = timedelta(minutes=1)
+MAX_SYNTHETIC_GAP_INTERVALS = 30
 
 
 def ingest_bars(bars: Sequence[Bar]) -> list[Bar]:
@@ -36,6 +37,11 @@ def _fill_missing_bars(bars: Sequence[Bar]) -> list[Bar]:
     filled = [bars[0]]
     for bar in bars[1:]:
         previous = filled[-1]
+        missing_intervals = int((bar.timestamp - previous.timestamp) // BAR_INTERVAL) - 1
+        if missing_intervals > MAX_SYNTHETIC_GAP_INTERVALS:
+            filled.append(bar)
+            continue
+
         expected = previous.timestamp + BAR_INTERVAL
         while expected < bar.timestamp:
             filled.append(_synthetic_bar(previous, expected))
