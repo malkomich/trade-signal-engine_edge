@@ -59,20 +59,22 @@ class SignalEngine:
         exit_raw += benchmark_exit
 
         max_weight = sum(float(weight) for weight in self.config.weights.values())
-        benchmark_weight = 1.0
-        entry_score = _score_from_signal(entry_raw, max_weight + benchmark_weight)
-        exit_score = _score_from_signal(exit_raw, max_weight + benchmark_weight)
-        hard_exit_veto = self._hard_exit_veto(snapshot)
+        # The benchmark term is capped separately in _benchmark_bias, so normalize each side with its own bound.
+        benchmark_entry_weight = 0.575
+        benchmark_exit_weight = 0.425
+        entry_score = _score_from_signal(entry_raw, max_weight + benchmark_entry_weight)
+        exit_score = _score_from_signal(exit_raw, max_weight + benchmark_exit_weight)
+        strong_exit_pressure = self._strong_exit_pressure(snapshot)
 
-        if state is TradeState.FLAT and (exit_score >= self.config.exit_threshold or hard_exit_veto):
-            reasons.append("exit-veto")
-            action = SignalAction.HOLD
+        if state is TradeState.ACCEPTED_OPEN and (exit_score >= self.config.exit_threshold or strong_exit_pressure):
+            if strong_exit_pressure:
+                reasons.append("exit-pressure")
+            action = SignalAction.SELL_ALERT
+            if "exit-qualified" not in reasons:
+                reasons.append("exit-qualified")
         elif state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= self.config.entry_threshold:
             action = SignalAction.BUY_ALERT
             reasons.append("entry-qualified")
-        elif state is TradeState.ACCEPTED_OPEN and exit_score >= self.config.exit_threshold:
-            action = SignalAction.SELL_ALERT
-            reasons.append("exit-qualified")
         else:
             action = SignalAction.HOLD
 
@@ -88,7 +90,7 @@ class SignalEngine:
             reasons=tuple(reasons),
         )
 
-    def _hard_exit_veto(self, snapshot: IndicatorSnapshot) -> bool:
+    def _strong_exit_pressure(self, snapshot: IndicatorSnapshot) -> bool:
         if snapshot.rsi is not None and snapshot.stochastic_k is not None:
             if snapshot.rsi >= 70 and snapshot.stochastic_k >= 80:
                 return True
