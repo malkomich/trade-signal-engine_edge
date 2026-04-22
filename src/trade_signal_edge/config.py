@@ -8,6 +8,9 @@ from pathlib import Path
 @dataclass(slots=True)
 class RuntimeConfig:
     symbol: str = "AAPL"
+    symbols: tuple[str, ...] = ("AAPL", "AMZN", "GOOGL", "META", "MSFT", "NVDA", "PLTR", "TSLA")
+    benchmark_symbol: str = "IXIC"
+    session_id: str = "nasdaq-live"
     bars: int = 60
     provider: str = "synthetic"
     api_base_url: str | None = None
@@ -22,8 +25,15 @@ class RuntimeConfig:
 
 def load_runtime_config() -> RuntimeConfig:
     defaults = RuntimeConfig()
+    symbols = _parse_symbols(os.getenv("EDGE_SYMBOLS"))
+    if not symbols:
+        symbols = _parse_symbols(os.getenv("EDGE_SYMBOL")) or defaults.symbols
+    symbol = symbols[0] if symbols else defaults.symbol
     return RuntimeConfig(
-        symbol=os.getenv("EDGE_SYMBOL", defaults.symbol),
+        symbol=symbol,
+        symbols=symbols,
+        benchmark_symbol=(os.getenv("EDGE_BENCHMARK_SYMBOL", defaults.benchmark_symbol) or defaults.benchmark_symbol).strip().upper(),
+        session_id=(os.getenv("EDGE_SESSION_ID", defaults.session_id) or defaults.session_id).strip(),
         bars=int(os.getenv("EDGE_BARS", str(defaults.bars))),
         api_base_url=os.getenv("API_BASE_URL", defaults.api_base_url),
         provider=(os.getenv("EDGE_PROVIDER", defaults.provider) or defaults.provider).strip().lower(),
@@ -59,3 +69,17 @@ def _read_optional_value(value_env: str, file_env: str) -> str | None:
         return None
     candidate = value.strip()
     return candidate or None
+
+
+def _parse_symbols(value: str | None) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    items = [item.strip().upper() for item in value.split(",")]
+    symbols = tuple(item for item in items if item)
+    if len(symbols) != len(set(symbols)):
+        deduped: list[str] = []
+        for symbol in symbols:
+            if symbol not in deduped:
+                deduped.append(symbol)
+        return tuple(deduped)
+    return symbols

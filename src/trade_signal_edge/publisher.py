@@ -5,8 +5,7 @@ from typing import Protocol
 from urllib import error, request
 import json
 
-from .models import SignalDecision
-from .schema import EVENT_TYPE_DECISION_CREATED
+from .models import SignalAction, SignalDecision
 
 
 class DecisionPublisher(Protocol):
@@ -17,14 +16,15 @@ class DecisionPublisher(Protocol):
 @dataclass(slots=True)
 class HttpDecisionPublisher:
     base_url: str
+    session_id: str
     timeout_seconds: int = 10
 
     def publish(self, decision: SignalDecision) -> None:
+        action = self._resolve_action(decision.action)
+        if action is None:
+            return
         payload = {
-            "event_type": EVENT_TYPE_DECISION_CREATED,
-            "session_id": "local-session",
             "symbol": decision.symbol,
-            "action": decision.action.value,
             "reason": "; ".join(decision.reasons) if decision.reasons else "signal-evaluated",
             "entry_score": decision.entry_score,
             "exit_score": decision.exit_score,
@@ -32,7 +32,7 @@ class HttpDecisionPublisher:
         }
         body = json.dumps(payload).encode("utf-8")
         req = request.Request(
-            f"{self.base_url.rstrip('/')}/v1/decisions",
+            f"{self.base_url.rstrip('/')}/v1/sessions/{self.session_id}/{action}",
             data=body,
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -44,3 +44,10 @@ class HttpDecisionPublisher:
             raise RuntimeError(f"decision publish failed with status {exc.code}") from exc
         except error.URLError as exc:
             raise RuntimeError("decision publish failed") from exc
+
+    def _resolve_action(self, action: SignalAction) -> str | None:
+        if action is SignalAction.BUY_ALERT:
+            return "accept"
+        if action is SignalAction.SELL_ALERT:
+            return "exit"
+        return None

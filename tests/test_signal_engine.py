@@ -59,3 +59,37 @@ def test_signal_engine_vetoes_entries_when_exit_pressure_is_high() -> None:
     assert decision.action is SignalAction.HOLD
     assert "exit-veto" in decision.reasons
 
+
+def test_signal_engine_accounts_for_benchmark_alignment() -> None:
+    benchmark = IndicatorSnapshot(
+        symbol="IXIC",
+        timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
+        close=101.0,
+        ema_fast=100.4,
+        ema_slow=99.6,
+    )
+    snapshot = IndicatorSnapshot(
+        symbol="AAPL",
+        timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
+        close=103.5,
+        sma_fast=103.0,
+        sma_slow=102.0,
+        ema_fast=103.1,
+        ema_slow=102.2,
+        vwap=102.4,
+        rsi=58.0,
+        atr=1.15,
+        plus_di=25.0,
+        minus_di=16.0,
+        adx=24.0,
+        macd=0.8,
+        macd_signal=0.5,
+        macd_histogram=0.3,
+        stochastic_k=44.0,
+        stochastic_d=39.0,
+    )
+
+    decision = SignalEngine().evaluate(snapshot, TradeState.FLAT, benchmark)
+
+    assert decision.action is SignalAction.BUY_ALERT
+    assert "ixic-aligned" in decision.reasons
