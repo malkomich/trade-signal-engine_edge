@@ -31,6 +31,19 @@ class ConfigError(RuntimeError):
     """Raised when the current runtime configuration cannot be used."""
 
 
+def _parse_int_env(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    candidate = raw.strip()
+    if not candidate:
+        return default
+    try:
+        return int(candidate)
+    except ValueError:
+        return default
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a local sample signal evaluation.")
     parser.add_argument("--symbol", default=None)
@@ -39,7 +52,7 @@ def main() -> None:
     parser.add_argument("--api-base-url", default=None)
     parser.add_argument("--watch", action="store_true", help="Keep the worker running and poll on an interval.")
     parser.add_argument("--interval-seconds", type=int, default=60, help="Polling interval used with --watch.")
-    parser.add_argument("--http-port", type=int, default=int(os.getenv("EDGE_HTTP_PORT", "8081")))
+    parser.add_argument("--http-port", type=int, default=_parse_int_env("EDGE_HTTP_PORT", 8081))
     args = parser.parse_args()
 
     if args.watch:
@@ -60,36 +73,47 @@ def main() -> None:
 def _run_watch_loop(args: argparse.Namespace) -> None:
     interval = max(args.interval_seconds, 1)
     backoff = interval
-    status_server = start_status_server(max(args.http_port, 1))
+    status_server = None
     try:
+        status_server = start_status_server(max(args.http_port, 1))
         while True:
             try:
                 runtime = load_runtime_config()
                 report = _run_once(args, runtime)
-                status_server.store.update_run(
-                    session_active=bool(report.get("session_active", True)),
-                    symbol=report.get("symbol"),
-                    provider=report.get("provider"),
-                    action=report.get("action"),
-                    next_state=report.get("next_state"),
-                    last_error=report.get("error"),
-                )
+                if report.get("session_active", True):
+                    status_server.store.update_run(
+                        session_active=True,
+                        symbol=report.get("symbol"),
+                        provider=report.get("provider"),
+                        action=report.get("action"),
+                        next_state=report.get("next_state"),
+                        last_error=report.get("error"),
+                    )
+                else:
+                    status_server.store.update_run(
+                        session_active=False,
+                        last_error=report.get("error"),
+                        clear_details=False,
+                    )
                 backoff = interval
             except (OSError, ValueError, ConfigError) as error:
                 print(_json_error("config", error))
-                status_server.store.update_run(session_active=False, last_error=str(error))
+                if status_server is not None:
+                    status_server.store.update_run(session_active=False, last_error=str(error), clear_details=False)
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 300)
                 continue
             except Exception as error:
                 print(_json_error("runtime", error))
-                status_server.store.update_run(session_active=False, last_error=str(error))
+                if status_server is not None:
+                    status_server.store.update_run(session_active=False, last_error=str(error), clear_details=False)
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 300)
                 continue
             time.sleep(interval)
     finally:
-        status_server.close()
+        if status_server is not None:
+            status_server.close()
 
 
 def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:

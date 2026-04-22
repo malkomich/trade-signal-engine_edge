@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Lock, Thread
 from typing import Any
 import json
+from urllib.parse import urlsplit
 
 
 @dataclass(slots=True)
@@ -35,23 +36,54 @@ class WorkerStatusStore:
         action: str | None = None,
         next_state: str | None = None,
         last_error: str | None = None,
+        clear_details: bool = True,
     ) -> None:
         with self._lock:
             self._status.session_active = session_active
-            self._status.symbol = symbol
-            self._status.provider = provider
-            self._status.action = action
-            self._status.next_state = next_state
-            self._status.last_error = last_error
+            if clear_details:
+                self._status.symbol = symbol
+                self._status.provider = provider
+                self._status.action = action
+                self._status.next_state = next_state
+            else:
+                if symbol is not None:
+                    self._status.symbol = symbol
+                if provider is not None:
+                    self._status.provider = provider
+                if action is not None:
+                    self._status.action = action
+                if next_state is not None:
+                    self._status.next_state = next_state
+            self._status.last_error = _sanitize_error(last_error)
             self._status.last_run_at = datetime.now(tz=timezone.utc)
+
+    def is_ready(self) -> bool:
+        with self._lock:
+            return self._status.last_run_at is not None
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             payload = asdict(self._status)
-        payload["started_at"] = payload["started_at"].isoformat()
-        if payload["last_run_at"] is not None:
-            payload["last_run_at"] = payload["last_run_at"].isoformat()
+        payload = _public_snapshot(payload)
         return payload
+
+
+def _public_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
+    payload["started_at"] = payload["started_at"].isoformat()
+    if payload["last_run_at"] is not None:
+        payload["last_run_at"] = payload["last_run_at"].isoformat()
+    return payload
+
+
+def _sanitize_error(value: Any) -> str | None:
+    if value is None:
+        return None
+    message = " ".join(str(value).split())
+    if not message:
+        return None
+    if len(message) <= 240:
+        return message
+    return f"{message[:237]}..."
 
 
 @dataclass(slots=True)
@@ -87,12 +119,19 @@ def start_status_server(port: int) -> EdgeStatusServer:
             self.wfile.write(body)
 
         def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
-            if self.path in {"/", "/edge", "/healthz", "/readyz", "/status"}:
+            path = urlsplit(self.path).path
+            if path in {"/", "/edge", "/healthz", "/readyz", "/status"}:
                 snapshot = store.snapshot()
-                if self.path == "/status":
+                if path == "/status":
                     self._send_json(200, snapshot)
-                elif self.path == "/healthz" or self.path == "/readyz":
+                elif path == "/healthz":
                     self._send_json(200, {"status": "ok", "started_at": snapshot["started_at"]})
+                elif path == "/readyz":
+                    ready = store.is_ready()
+                    self._send_json(
+                        200 if ready else 503,
+                        {"status": "ready" if ready else "starting", "started_at": snapshot["started_at"]},
+                    )
                 else:
                     self._send_html(200, snapshot)
                 return
