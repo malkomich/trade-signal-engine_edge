@@ -59,10 +59,11 @@ class SignalEngine:
         exit_raw += benchmark_exit
 
         max_weight = sum(float(weight) for weight in self.config.weights.values())
-        # The benchmark term is capped separately in _benchmark_bias, so use its theoretical max here.
-        benchmark_weight = 0.575
-        entry_score = _score_from_signal(entry_raw, max_weight + benchmark_weight)
-        exit_score = _score_from_signal(exit_raw, max_weight + benchmark_weight)
+        # The benchmark term is capped separately in _benchmark_bias, so normalize each side with its own bound.
+        benchmark_entry_weight = 0.575
+        benchmark_exit_weight = 0.425
+        entry_score = _score_from_signal(entry_raw, max_weight + benchmark_entry_weight)
+        exit_score = _score_from_signal(exit_raw, max_weight + benchmark_exit_weight)
         strong_exit_pressure = self._strong_exit_pressure(snapshot)
 
         if state is TradeState.ACCEPTED_OPEN and (exit_score >= self.config.exit_threshold or strong_exit_pressure):
