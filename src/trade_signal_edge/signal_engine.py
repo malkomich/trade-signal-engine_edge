@@ -186,11 +186,12 @@ class SignalEngine:
         entry = 0.35 * benchmark_trend + 0.45 * relative_strength
         exit = -0.25 * benchmark_trend - 0.35 * relative_strength
 
-        if benchmark_trend > 0 or relative_strength > 0:
-            return entry, exit, "ixic-aligned"
-        if benchmark_trend < 0 or relative_strength < 0:
-            return entry, exit, "ixic-pressure"
-        return entry, exit, "ixic-neutral"
+        benchmark_label = benchmark.symbol.strip().lower() if benchmark.symbol.strip() else "benchmark"
+        if benchmark_trend > 0 and relative_strength > 0:
+            return entry, exit, f"{benchmark_label}-aligned"
+        if benchmark_trend < 0 and relative_strength < 0:
+            return entry, exit, f"{benchmark_label}-pressure"
+        return entry, exit, f"{benchmark_label}-mixed"
 
     def _relative_momentum(self, close: float, ema_slow: float | None, sma_slow: float | None) -> float:
         if close <= 0:

@@ -31,7 +31,10 @@ class ApiSessionClient:
             if not isinstance(item, dict):
                 continue
             status = item.get("status")
-            if not isinstance(status, str) or status.strip().lower() != "open":
+            if not isinstance(status, str):
+                continue
+            normalized_status = status.strip().lower()
+            if normalized_status not in {"open", "accepted_open"}:
                 continue
             symbol = _clean_symbol(item.get("symbol"))
             if symbol:

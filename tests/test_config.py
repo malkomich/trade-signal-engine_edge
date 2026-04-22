@@ -94,3 +94,13 @@ def test_load_runtime_config_invalid_log_level_falls_back(monkeypatch) -> None:
     runtime = load_runtime_config()
 
     assert runtime.log_level == "INFO"
+
+
+def test_load_runtime_config_blank_benchmark_and_session_fallback_to_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("EDGE_BENCHMARK_SYMBOL", "   ")
+    monkeypatch.setenv("EDGE_SESSION_ID", "   ")
+
+    runtime = load_runtime_config()
+
+    assert runtime.benchmark_symbol == "IXIC"
+    assert runtime.session_id == "nasdaq-live"

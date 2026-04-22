@@ -25,15 +25,13 @@ class RuntimeConfig:
 
 def load_runtime_config() -> RuntimeConfig:
     defaults = RuntimeConfig()
-    symbols = _parse_symbols(os.getenv("EDGE_SYMBOLS"))
-    if not symbols:
-        symbols = _parse_symbols(os.getenv("EDGE_SYMBOL")) or defaults.symbols
+    symbols = _resolve_symbols(defaults)
     symbol = symbols[0] if symbols else defaults.symbol
     return RuntimeConfig(
         symbol=symbol,
         symbols=symbols,
-        benchmark_symbol=(os.getenv("EDGE_BENCHMARK_SYMBOL", defaults.benchmark_symbol) or defaults.benchmark_symbol).strip().upper(),
-        session_id=(os.getenv("EDGE_SESSION_ID", defaults.session_id) or defaults.session_id).strip(),
+        benchmark_symbol=_resolve_symbol_env("EDGE_BENCHMARK_SYMBOL", defaults.benchmark_symbol),
+        session_id=_resolve_text_env("EDGE_SESSION_ID", defaults.session_id),
         bars=int(os.getenv("EDGE_BARS", str(defaults.bars))),
         api_base_url=os.getenv("API_BASE_URL", defaults.api_base_url),
         provider=(os.getenv("EDGE_PROVIDER", defaults.provider) or defaults.provider).strip().lower(),
@@ -45,6 +43,26 @@ def load_runtime_config() -> RuntimeConfig:
         metrics_enabled=_parse_bool(os.getenv("EDGE_METRICS_ENABLED")),
         secret_source=(os.getenv("EDGE_SECRET_SOURCE", defaults.secret_source) or defaults.secret_source).strip().lower(),
     )
+
+
+def _resolve_symbol_env(name: str, fallback: str) -> str:
+    candidate = (os.getenv(name) or "").strip().upper()
+    return candidate or fallback
+
+
+def _resolve_text_env(name: str, fallback: str) -> str:
+    candidate = (os.getenv(name) or "").strip()
+    return candidate or fallback
+
+
+def _resolve_symbols(defaults: RuntimeConfig) -> tuple[str, ...]:
+    symbols = _parse_symbols(os.getenv("EDGE_SYMBOLS"))
+    if symbols:
+        return symbols
+    legacy_symbol = (os.getenv("EDGE_SYMBOL") or "").strip().upper()
+    if legacy_symbol:
+        return (legacy_symbol,)
+    return defaults.symbols
 
 
 def _parse_log_level(value: str | None, fallback: str) -> str:

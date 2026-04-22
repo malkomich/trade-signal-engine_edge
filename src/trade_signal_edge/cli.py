@@ -157,12 +157,29 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     session_client = ApiSessionClient(api_base_url) if api_base_url else None
     open_symbols = session_client.load_open_symbols(runtime.session_id) if session_client else set()
     benchmark_snapshot = _load_benchmark_snapshot(provider, indicator_calculator, runtime.benchmark_symbol, bars)
+    if benchmark_snapshot is None:
+        report = {
+            "session_active": True,
+            "error": f"benchmark {runtime.benchmark_symbol}: no history found",
+            "symbol": symbols[0] if symbols else symbol,
+            "symbols": symbols,
+            "provider": provider_config.name,
+            "action": None,
+            "next_state": None,
+            "decision_count": 0,
+        }
+        print(json.dumps(report, indent=2))
+        return report
     publisher = HttpDecisionPublisher(api_base_url, runtime.session_id) if api_base_url else None
 
     decisions: list[dict[str, object]] = []
     errors: list[str] = []
     for current_symbol in symbols:
-        history = provider.history(current_symbol, bars)
+        try:
+            history = provider.history(current_symbol, bars)
+        except Exception as error:
+            errors.append(f"{current_symbol}: history load failed: {error}")
+            continue
         if not history:
             errors.append(f"{current_symbol}: no history found")
             continue
@@ -229,12 +246,13 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     latest = decisions[-1] if decisions else None
     return {
         "session_active": True,
-        "symbols": [decision["symbol"] for decision in decisions],
+        "symbols": symbols,
         "decision_count": len(decisions),
-        "symbol": latest["symbol"] if latest else symbol,
+        "symbol": symbols[0] if symbols else symbol,
         "provider": provider_config.name,
         "action": latest["decision"]["action"] if latest else None,
         "next_state": latest["next_state"] if latest else None,
+        "latest_symbol": latest["symbol"] if latest else None,
         "timestamp": latest["snapshot"]["timestamp"] if latest else datetime.now(tz=timezone.utc).isoformat(),
     }
 
