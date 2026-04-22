@@ -45,7 +45,6 @@ visible runtime snapshot while Dozzle streams the container logs.
 By default the runtime watches a Nasdaq universe of `AAPL`, `AMZN`, `GOOGL`, `META`, `MSFT`,
 `NVDA`, `PLTR`, and `TSLA` against the `IXIC` benchmark. Override the universe with
 `EDGE_SYMBOLS` and the benchmark with `EDGE_BENCHMARK_SYMBOL` when needed.
-
 The merge-to-`main` workflow now runs on the Raspberry Pi self-hosted runner, checks out the
 repository on the Pi itself, and recreates the container with the same compose project name.
 

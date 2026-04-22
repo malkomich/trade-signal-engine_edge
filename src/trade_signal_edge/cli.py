@@ -22,10 +22,10 @@ from .providers import (
     resolve_provider_name,
     selected_provider_policy,
 )
-from .status_server import start_status_server
+from .session_calendar import load_session_calendar
 from .signal_engine import SignalEngine
 from .state_machine import StateMachine
-from .session_calendar import load_session_calendar
+from .status_server import start_status_server
 
 
 class ConfigError(RuntimeError):
