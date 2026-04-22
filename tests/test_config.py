@@ -104,3 +104,13 @@ def test_load_runtime_config_blank_benchmark_and_session_fallback_to_defaults(mo
 
     assert runtime.benchmark_symbol == "IXIC"
     assert runtime.session_id == "nasdaq-live"
+
+
+def test_load_runtime_config_legacy_symbol_env_accepts_comma_separated_values(monkeypatch) -> None:
+    monkeypatch.delenv("EDGE_SYMBOLS", raising=False)
+    monkeypatch.setenv("EDGE_SYMBOL", "MSFT, NVDA, MSFT")
+
+    runtime = load_runtime_config()
+
+    assert runtime.symbols == ("MSFT", "NVDA")
+    assert runtime.symbol == "MSFT"

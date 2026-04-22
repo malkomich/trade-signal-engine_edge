@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from json import loads
-from urllib import error, request
+from urllib import error, parse, request
 
 
 @dataclass(slots=True)
@@ -14,7 +14,8 @@ class ApiSessionClient:
         if not self.base_url:
             return set()
 
-        req = request.Request(f"{self.base_url.rstrip('/')}/v1/sessions/{session_id}/windows", method="GET")
+        encoded_session_id = parse.quote(session_id, safe="")
+        req = request.Request(f"{self.base_url.rstrip('/')}/v1/sessions/{encoded_session_id}/windows", method="GET")
         try:
             with request.urlopen(req, timeout=self.timeout_seconds) as response:
                 payload = loads(response.read().decode("utf-8"))

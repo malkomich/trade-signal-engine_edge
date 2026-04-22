@@ -59,9 +59,9 @@ def _resolve_symbols(defaults: RuntimeConfig) -> tuple[str, ...]:
     symbols = _parse_symbols(os.getenv("EDGE_SYMBOLS"))
     if symbols:
         return symbols
-    legacy_symbol = (os.getenv("EDGE_SYMBOL") or "").strip().upper()
-    if legacy_symbol:
-        return (legacy_symbol,)
+    legacy_symbols = _parse_symbols(os.getenv("EDGE_SYMBOL"))
+    if legacy_symbols:
+        return legacy_symbols
     return defaults.symbols
 
 

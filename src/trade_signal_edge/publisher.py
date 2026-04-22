@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol
-from urllib import error, request
+from urllib import error, parse, request
 import json
 
 from .models import SignalAction, SignalDecision
@@ -31,8 +31,9 @@ class HttpDecisionPublisher:
             "requested_by": "edge",
         }
         body = json.dumps(payload).encode("utf-8")
+        encoded_session_id = parse.quote(self.session_id, safe="")
         req = request.Request(
-            f"{self.base_url.rstrip('/')}/v1/sessions/{self.session_id}/{action}",
+            f"{self.base_url.rstrip('/')}/v1/sessions/{encoded_session_id}/{action}",
             data=body,
             headers={"Content-Type": "application/json"},
             method="POST",

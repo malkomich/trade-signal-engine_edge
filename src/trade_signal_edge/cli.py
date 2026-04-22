@@ -211,6 +211,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         report = {
             "session_active": True,
             "error": "; ".join(errors),
+            "errors": errors,
             "symbol": symbol,
             "provider": provider_config.name,
             "action": None,
@@ -253,6 +254,8 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         "action": latest["decision"]["action"] if latest else None,
         "next_state": latest["next_state"] if latest else None,
         "latest_symbol": latest["symbol"] if latest else None,
+        "errors": errors,
+        "error": "; ".join(errors) if errors else None,
         "timestamp": latest["snapshot"]["timestamp"] if latest else datetime.now(tz=timezone.utc).isoformat(),
     }
 

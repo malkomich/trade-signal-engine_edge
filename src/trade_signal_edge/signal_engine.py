@@ -183,15 +183,16 @@ class SignalEngine:
         relative_strength = symbol_momentum - benchmark_momentum
         relative_strength = max(-0.5, min(0.5, relative_strength))
 
-        entry = 0.35 * benchmark_trend + 0.45 * relative_strength
-        exit = -0.25 * benchmark_trend - 0.35 * relative_strength
+        entry_bias = 0.35 * benchmark_trend + 0.45 * relative_strength
+        exit_bias = -0.25 * benchmark_trend - 0.35 * relative_strength
 
-        benchmark_label = benchmark.symbol.strip().lower() if benchmark.symbol.strip() else "benchmark"
+        benchmark_label_raw = benchmark.symbol.strip()
+        benchmark_label = benchmark_label_raw.lower() if benchmark_label_raw else "benchmark"
         if benchmark_trend > 0 and relative_strength > 0:
-            return entry, exit, f"{benchmark_label}-aligned"
+            return entry_bias, exit_bias, f"{benchmark_label}-aligned"
         if benchmark_trend < 0 and relative_strength < 0:
-            return entry, exit, f"{benchmark_label}-pressure"
-        return entry, exit, f"{benchmark_label}-mixed"
+            return entry_bias, exit_bias, f"{benchmark_label}-pressure"
+        return entry_bias, exit_bias, f"{benchmark_label}-mixed"
 
     def _relative_momentum(self, close: float, ema_slow: float | None, sma_slow: float | None) -> float:
         if close <= 0:
