@@ -18,8 +18,8 @@ class ApiSessionClient:
         try:
             with request.urlopen(req, timeout=self.timeout_seconds) as response:
                 payload = loads(response.read().decode("utf-8"))
-        except error.HTTPError:
-            return set()
+        except error.HTTPError as exc:
+            raise RuntimeError(f"failed to load open windows: {exc.code}") from exc
         except error.URLError as exc:
             raise RuntimeError("failed to load open windows") from exc
 
@@ -30,9 +30,18 @@ class ApiSessionClient:
         for item in payload:
             if not isinstance(item, dict):
                 continue
-            if str(item.get("status", "")).lower() != "open":
+            status = item.get("status")
+            if not isinstance(status, str) or status.strip().lower() != "open":
                 continue
-            symbol = str(item.get("symbol", "")).strip().upper()
+            symbol = _clean_symbol(item.get("symbol"))
             if symbol:
                 open_symbols.add(symbol)
         return open_symbols
+
+
+def _clean_symbol(value: object) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        return ""
+    return value.strip().upper()

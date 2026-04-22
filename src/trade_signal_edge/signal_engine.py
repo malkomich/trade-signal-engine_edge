@@ -59,8 +59,9 @@ class SignalEngine:
         exit_raw += benchmark_exit
 
         max_weight = sum(float(weight) for weight in self.config.weights.values())
-        entry_score = _score_from_signal(entry_raw, max_weight)
-        exit_score = _score_from_signal(exit_raw, max_weight)
+        benchmark_weight = 1.0
+        entry_score = _score_from_signal(entry_raw, max_weight + benchmark_weight)
+        exit_score = _score_from_signal(exit_raw, max_weight + benchmark_weight)
         hard_exit_veto = self._hard_exit_veto(snapshot)
 
         if state is TradeState.FLAT and (exit_score >= self.config.exit_threshold or hard_exit_veto):

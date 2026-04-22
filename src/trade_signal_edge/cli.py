@@ -88,15 +88,18 @@ def _run_watch_loop(args: argparse.Namespace) -> None:
                 if report.get("session_active", True):
                     status_server.store.update_run(
                         session_active=True,
+                        symbols=report.get("symbols") if isinstance(report.get("symbols"), list) else None,
                         symbol=report.get("symbol"),
                         provider=report.get("provider"),
                         action=report.get("action"),
                         next_state=report.get("next_state"),
                         last_error=report.get("error"),
+                        decision_count=report.get("decision_count") if isinstance(report.get("decision_count"), int) else None,
                     )
                 else:
                     status_server.store.update_run(
                         session_active=False,
+                        symbols=report.get("symbols") if isinstance(report.get("symbols"), list) else None,
                         last_error=report.get("error"),
                         clear_details=False,
                     )
@@ -226,6 +229,8 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     latest = decisions[-1] if decisions else None
     return {
         "session_active": True,
+        "symbols": [decision["symbol"] for decision in decisions],
+        "decision_count": len(decisions),
         "symbol": latest["symbol"] if latest else symbol,
         "provider": provider_config.name,
         "action": latest["decision"]["action"] if latest else None,

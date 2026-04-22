@@ -93,3 +93,5 @@ def test_signal_engine_accounts_for_benchmark_alignment() -> None:
 
     assert decision.action is SignalAction.BUY_ALERT
     assert "ixic-aligned" in decision.reasons
+    assert 0.0 <= decision.entry_score <= 1.0
+    assert 0.0 <= decision.exit_score <= 1.0

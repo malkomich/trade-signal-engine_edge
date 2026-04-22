@@ -20,10 +20,12 @@ def test_status_server_exposes_json_and_html() -> None:
 
         server.store.update_run(
             session_active=True,
+            symbols=["NVDA", "AAPL"],
             symbol="AAPL",
             provider="synthetic",
             action="BUY_ALERT",
             next_state="ENTRY_SIGNALLED",
+            decision_count=2,
         )
 
         for _ in range(20):
@@ -37,7 +39,9 @@ def test_status_server_exposes_json_and_html() -> None:
             raise AssertionError("status server did not become ready")
 
         assert payload["symbol"] == "AAPL"
+        assert payload["symbols"] == ["NVDA", "AAPL"]
         assert payload["action"] == "BUY_ALERT"
+        assert payload["decision_count"] == 2
         assert payload["last_error"] is None
 
         with urlopen(f"http://127.0.0.1:{port}/readyz", timeout=2) as response:
