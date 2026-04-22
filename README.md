@@ -38,8 +38,12 @@ edge container with the API service on the Raspberry Pi.
 Inside that shared Compose project, the edge worker talks to the API container through the
 service name `api`, so `API_BASE_URL` defaults to `http://api:8080` in Docker.
 
-The merge-to-`main` workflow SSHes into the Raspberry Pi, updates the checked-out repository, and
-recreates the container with the same compose project name.
+The worker also exposes a lightweight status page on `http://localhost:18081/edge` so the
+Raspberry Pi proxy can route `https://tradesignalengine.backend.synapsesea.com/edge` to a
+visible runtime snapshot while Dozzle streams the container logs.
+
+The merge-to-`main` workflow now runs on the Raspberry Pi self-hosted runner, checks out the
+repository on the Pi itself, and recreates the container with the same compose project name.
 
 ## Test
 
@@ -57,6 +61,7 @@ make test
 - `EDGE_LOG_LEVEL`: runtime log level surfaced in the CLI report, default `INFO`
 - `EDGE_METRICS_ENABLED`: enable the lightweight observability flag in the runtime report, default `false`
 - `EDGE_SECRET_SOURCE`: where runtime secrets come from, default `environment`
+- `EDGE_HTTP_PORT`: local HTTP status port exposed by the worker, default `8081`
 - `MARKET_HOLIDAYS`: comma-separated `YYYY-MM-DD` holiday dates
 - `MARKET_EARLY_CLOSES`: comma-separated `YYYY-MM-DD=HH:MM` early close rules
 - `ALPACA_API_KEY_ID` or `ALPACA_API_KEY_ID_FILE`: required when `EDGE_PROVIDER=alpaca`
@@ -76,3 +81,4 @@ stay out of the rendered compose config and the container inspect output.
 - The selected provider is visible in the CLI output together with the full provider policy matrix so the tradeoff stays explicit.
 - Runtime output includes the deployment profile, log level, metrics flag, and secret source so the Pi path stays explicit without checking secrets into the repository.
 - `--watch` keeps the worker alive and prints a fresh evaluation every interval so Dozzle can stream logs continuously.
+- The `/edge` route can be proxied to the status page, while `/status` returns the same runtime snapshot as JSON for operators.

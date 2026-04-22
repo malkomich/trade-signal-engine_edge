@@ -13,32 +13,52 @@ jobs:
     concurrency:
       group: deploy-edge-${{ github.ref }}
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, raspberry, trade-signal-engine-edge]
 
     steps:
-      - name: Deploy on Raspberry Pi
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          host: ${{ secrets.RASPBERRY_PI_HOST }}
-          username: ${{ secrets.RASPBERRY_PI_USER }}
-          key: ${{ secrets.RASPBERRY_PI_SSH_KEY }}
-          fingerprint: ${{ secrets.RASPBERRY_PI_HOST_FINGERPRINT }}
-          script: |
-            set -e
-            cd /opt/trade-signal-engine/edge
-            export ALPACA_API_KEY_ID_FILE=/opt/trade-signal-engine/edge/.secrets/alpaca_api_key_id
-            export ALPACA_API_SECRET_KEY_FILE=/opt/trade-signal-engine/edge/.secrets/alpaca_api_secret_key
-            git fetch --prune origin
-            git checkout main
-            git reset --hard "${{ github.sha }}"
-            docker image prune -f
-            docker compose up -d --build
-            container_id="$(docker compose ps -q edge)"
-            for _ in $(seq 1 30); do
-              if [ -n "$container_id" ] && [ "$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null || echo false)" = "true" ]; then
-                exit 0
-              fi
-              sleep 2
-            done
-            docker compose logs --no-color edge
-            exit 1
+          fetch-depth: 0
+
+      - name: Verify runner prerequisites
+        run: |
+          set -e
+          docker --version
+          docker compose version
+
+      - name: Deploy on Raspberry Pi
+        env:
+          EDGE_PROVIDER: synthetic
+          EDGE_HTTP_PORT: 8081
+          EDGE_PORT: 18081
+          API_BASE_URL: http://api:8080
+          EDGE_DEPLOYMENT_PROFILE: pi
+          EDGE_LOG_LEVEL: INFO
+          EDGE_METRICS_ENABLED: "false"
+          EDGE_SECRET_SOURCE: environment
+        run: |
+          set -e
+          docker compose up -d --build --remove-orphans
+          python - <<'PY'
+          import os
+          import sys
+          import time
+          from urllib.request import urlopen
+
+          port = os.getenv("EDGE_PORT", "18081")
+          url = f"http://127.0.0.1:{port}/readyz"
+          deadline = time.time() + 60
+
+          while time.time() < deadline:
+              try:
+                  with urlopen(url, timeout=2) as response:
+                      if response.status == 200:
+                          sys.exit(0)
+              except Exception:
+                  time.sleep(2)
+
+          print("edge ready endpoint did not become ready", file=sys.stderr)
+          sys.exit(1)
+          PY
+          docker compose ps
