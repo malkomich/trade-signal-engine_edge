@@ -42,6 +42,9 @@ The worker also exposes a lightweight status page on `http://localhost:18081/edg
 Raspberry Pi proxy can route `https://tradesignalengine.backend.synapsesea.com/edge` to a
 visible runtime snapshot while Dozzle streams the container logs.
 
+By default the runtime watches a Nasdaq universe of `AAPL`, `AMZN`, `GOOGL`, `META`, `MSFT`,
+`NVDA`, `PLTR`, and `TSLA` against the `IXIC` benchmark. Override the universe with
+`EDGE_SYMBOLS` and the benchmark with `EDGE_BENCHMARK_SYMBOL` when needed.
 The merge-to-`main` workflow now runs on the Raspberry Pi self-hosted runner, checks out the
 repository on the Pi itself, and recreates the container with the same compose project name.
 
@@ -53,10 +56,13 @@ make test
 
 ## Environment
 
-- `EDGE_SYMBOL`: ticker symbol to monitor, default `AAPL`
+- `EDGE_SYMBOL`: primary ticker symbol to monitor, default `AAPL`
+- `EDGE_SYMBOLS`: comma-separated symbol universe to monitor, default `AAPL,AMZN,GOOGL,META,MSFT,NVDA,PLTR,TSLA`
+- `EDGE_BENCHMARK_SYMBOL`: benchmark symbol used as context for scoring, default `IXIC`
+- `EDGE_SESSION_ID`: session identifier used when reading and writing window state, default `nasdaq-live`
 - `EDGE_BARS`: number of bars to fetch, default `60`
 - `EDGE_PROVIDER`: provider selected by configuration, `synthetic` or `alpaca`
-- `API_BASE_URL`: optional API endpoint used by the decision publisher
+- `API_BASE_URL`: optional API endpoint used by the decision publisher and session reader
 - `EDGE_DEPLOYMENT_PROFILE`: deployment target label, default `pi`
 - `EDGE_LOG_LEVEL`: runtime log level surfaced in the CLI report, default `INFO`
 - `EDGE_METRICS_ENABLED`: enable the lightweight observability flag in the runtime report, default `false`
@@ -81,4 +87,6 @@ stay out of the rendered compose config and the container inspect output.
 - The selected provider is visible in the CLI output together with the full provider policy matrix so the tradeoff stays explicit.
 - Runtime output includes the deployment profile, log level, metrics flag, and secret source so the Pi path stays explicit without checking secrets into the repository.
 - `--watch` keeps the worker alive and prints a fresh evaluation every interval so Dozzle can stream logs continuously.
+- The worker reads open windows from the API so entry and exit decisions stay stateful per symbol.
+- The `IXIC` benchmark is loaded once per cycle and influences the entry and exit scoring for each stock in the universe.
 - The `/edge` route can be proxied to the status page, while `/status` returns the same runtime snapshot as JSON for operators.

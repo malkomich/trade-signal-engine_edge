@@ -15,11 +15,13 @@ class WorkerStatus:
     started_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
     last_run_at: datetime | None = None
     session_active: bool | None = None
+    symbols: list[str] = field(default_factory=list)
     symbol: str | None = None
     provider: str | None = None
     action: str | None = None
     next_state: str | None = None
     last_error: str | None = None
+    decision_count: int = 0
 
 
 @dataclass(slots=True)
@@ -31,22 +33,28 @@ class WorkerStatusStore:
         self,
         *,
         session_active: bool,
+        symbols: list[str] | None = None,
         symbol: str | None = None,
         provider: str | None = None,
         action: str | None = None,
         next_state: str | None = None,
         last_error: str | None = None,
+        decision_count: int | None = None,
         clear_details: bool = True,
     ) -> None:
         with self._lock:
             self._status.session_active = session_active
             if clear_details:
+                self._status.symbols = list(symbols or [])
                 self._status.symbol = symbol
                 self._status.provider = provider
                 self._status.action = action
                 self._status.next_state = next_state
                 self._status.last_error = _sanitize_error(last_error)
+                self._status.decision_count = max(decision_count or 0, 0)
             else:
+                if symbols is not None:
+                    self._status.symbols = list(symbols)
                 if symbol is not None:
                     self._status.symbol = symbol
                 if provider is not None:
@@ -57,6 +65,8 @@ class WorkerStatusStore:
                     self._status.next_state = next_state
                 if last_error is not None:
                     self._status.last_error = _sanitize_error(last_error)
+                if decision_count is not None:
+                    self._status.decision_count = max(decision_count, 0)
             self._status.last_run_at = datetime.now(tz=timezone.utc)
 
     def is_ready(self) -> bool:

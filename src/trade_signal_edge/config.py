@@ -8,6 +8,9 @@ from pathlib import Path
 @dataclass(slots=True)
 class RuntimeConfig:
     symbol: str = "AAPL"
+    symbols: tuple[str, ...] = ("AAPL", "AMZN", "GOOGL", "META", "MSFT", "NVDA", "PLTR", "TSLA")
+    benchmark_symbol: str = "IXIC"
+    session_id: str = "nasdaq-live"
     bars: int = 60
     provider: str = "synthetic"
     api_base_url: str | None = None
@@ -22,8 +25,13 @@ class RuntimeConfig:
 
 def load_runtime_config() -> RuntimeConfig:
     defaults = RuntimeConfig()
+    symbols = _resolve_symbols(defaults)
+    symbol = symbols[0] if symbols else defaults.symbol
     return RuntimeConfig(
-        symbol=os.getenv("EDGE_SYMBOL", defaults.symbol),
+        symbol=symbol,
+        symbols=symbols,
+        benchmark_symbol=_resolve_symbol_env("EDGE_BENCHMARK_SYMBOL", defaults.benchmark_symbol),
+        session_id=_resolve_text_env("EDGE_SESSION_ID", defaults.session_id),
         bars=int(os.getenv("EDGE_BARS", str(defaults.bars))),
         api_base_url=os.getenv("API_BASE_URL", defaults.api_base_url),
         provider=(os.getenv("EDGE_PROVIDER", defaults.provider) or defaults.provider).strip().lower(),
@@ -35,6 +43,26 @@ def load_runtime_config() -> RuntimeConfig:
         metrics_enabled=_parse_bool(os.getenv("EDGE_METRICS_ENABLED")),
         secret_source=(os.getenv("EDGE_SECRET_SOURCE", defaults.secret_source) or defaults.secret_source).strip().lower(),
     )
+
+
+def _resolve_symbol_env(name: str, fallback: str) -> str:
+    candidate = (os.getenv(name) or "").strip().upper()
+    return candidate or fallback
+
+
+def _resolve_text_env(name: str, fallback: str) -> str:
+    candidate = (os.getenv(name) or "").strip()
+    return candidate or fallback
+
+
+def _resolve_symbols(defaults: RuntimeConfig) -> tuple[str, ...]:
+    symbols = _parse_symbols(os.getenv("EDGE_SYMBOLS"))
+    if symbols:
+        return symbols
+    legacy_symbols = _parse_symbols(os.getenv("EDGE_SYMBOL"))
+    if legacy_symbols:
+        return legacy_symbols
+    return defaults.symbols
 
 
 def _parse_log_level(value: str | None, fallback: str) -> str:
@@ -59,3 +87,17 @@ def _read_optional_value(value_env: str, file_env: str) -> str | None:
         return None
     candidate = value.strip()
     return candidate or None
+
+
+def _parse_symbols(value: str | None) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    items = [item.strip().upper() for item in value.split(",")]
+    symbols = tuple(item for item in items if item)
+    if len(symbols) != len(set(symbols)):
+        deduped: list[str] = []
+        for symbol in symbols:
+            if symbol not in deduped:
+                deduped.append(symbol)
+        return tuple(deduped)
+    return symbols

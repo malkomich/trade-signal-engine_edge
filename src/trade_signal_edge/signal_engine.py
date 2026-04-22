@@ -21,7 +21,12 @@ def _score_from_signal(raw_score: float, max_weight: float) -> float:
 class SignalEngine:
     config: SignalConfig = field(default_factory=SignalConfig)
 
-    def evaluate(self, snapshot: IndicatorSnapshot, state: TradeState = TradeState.FLAT) -> SignalDecision:
+    def evaluate(
+        self,
+        snapshot: IndicatorSnapshot,
+        state: TradeState = TradeState.FLAT,
+        benchmark: IndicatorSnapshot | None = None,
+    ) -> SignalDecision:
         entry_raw = 0.0
         exit_raw = 0.0
         reasons: list[str] = []
@@ -40,6 +45,7 @@ class SignalEngine:
         dm_entry, dm_exit = self._dm_bias(snapshot.plus_di, snapshot.minus_di, snapshot.adx)
         macd_entry, macd_exit = self._macd_bias(snapshot.macd, snapshot.macd_signal, snapshot.macd_histogram)
         stochastic_entry, stochastic_exit = self._stochastic_bias(snapshot.stochastic_k, snapshot.stochastic_d)
+        benchmark_entry, benchmark_exit, benchmark_reason = self._benchmark_bias(snapshot, benchmark)
 
         add("sma", sma_bias, -sma_bias)
         add("ema", ema_bias, -ema_bias)
@@ -49,10 +55,13 @@ class SignalEngine:
         add("dm", dm_entry, dm_exit)
         add("macd", macd_entry, macd_exit)
         add("stochastic", stochastic_entry, stochastic_exit)
+        entry_raw += benchmark_entry
+        exit_raw += benchmark_exit
 
         max_weight = sum(float(weight) for weight in self.config.weights.values())
-        entry_score = _score_from_signal(entry_raw, max_weight)
-        exit_score = _score_from_signal(exit_raw, max_weight)
+        benchmark_weight = 1.0
+        entry_score = _score_from_signal(entry_raw, max_weight + benchmark_weight)
+        exit_score = _score_from_signal(exit_raw, max_weight + benchmark_weight)
         hard_exit_veto = self._hard_exit_veto(snapshot)
 
         if state is TradeState.FLAT and (exit_score >= self.config.exit_threshold or hard_exit_veto):
@@ -66,6 +75,9 @@ class SignalEngine:
             reasons.append("exit-qualified")
         else:
             action = SignalAction.HOLD
+
+        if benchmark_reason is not None:
+            reasons.append(benchmark_reason)
 
         return SignalDecision(
             symbol=snapshot.symbol,
@@ -156,3 +168,37 @@ class SignalEngine:
         if stochastic_k > stochastic_d:
             return 0.3, 0.0
         return 0.0, 0.3
+
+    def _benchmark_bias(
+        self,
+        snapshot: IndicatorSnapshot,
+        benchmark: IndicatorSnapshot | None,
+    ) -> tuple[float, float, str | None]:
+        if benchmark is None:
+            return 0.0, 0.0, None
+
+        benchmark_trend = self._trend_bias(benchmark.ema_fast, benchmark.ema_slow)
+        symbol_momentum = self._relative_momentum(snapshot.close, snapshot.ema_slow, snapshot.sma_slow)
+        benchmark_momentum = self._relative_momentum(benchmark.close, benchmark.ema_slow, benchmark.sma_slow)
+        relative_strength = symbol_momentum - benchmark_momentum
+        relative_strength = max(-0.5, min(0.5, relative_strength))
+
+        entry_bias = 0.35 * benchmark_trend + 0.45 * relative_strength
+        exit_bias = -0.25 * benchmark_trend - 0.35 * relative_strength
+
+        benchmark_label_raw = benchmark.symbol.strip()
+        benchmark_label = benchmark_label_raw.lower() if benchmark_label_raw else "benchmark"
+        if benchmark_trend > 0 and relative_strength > 0:
+            return entry_bias, exit_bias, f"{benchmark_label}-aligned"
+        if benchmark_trend < 0 and relative_strength < 0:
+            return entry_bias, exit_bias, f"{benchmark_label}-pressure"
+        return entry_bias, exit_bias, f"{benchmark_label}-mixed"
+
+    def _relative_momentum(self, close: float, ema_slow: float | None, sma_slow: float | None) -> float:
+        if close <= 0:
+            return 0.0
+        if ema_slow is not None and ema_slow > 0:
+            return (close / ema_slow) - 1.0
+        if sma_slow is not None and sma_slow > 0:
+            return (close / sma_slow) - 1.0
+        return 0.0

@@ -5,6 +5,9 @@ from trade_signal_edge.config import load_runtime_config
 
 def test_load_runtime_config_defaults(monkeypatch) -> None:
     monkeypatch.delenv("EDGE_SYMBOL", raising=False)
+    monkeypatch.delenv("EDGE_SYMBOLS", raising=False)
+    monkeypatch.delenv("EDGE_BENCHMARK_SYMBOL", raising=False)
+    monkeypatch.delenv("EDGE_SESSION_ID", raising=False)
     monkeypatch.delenv("EDGE_BARS", raising=False)
     monkeypatch.delenv("EDGE_PROVIDER", raising=False)
     monkeypatch.delenv("API_BASE_URL", raising=False)
@@ -19,6 +22,9 @@ def test_load_runtime_config_defaults(monkeypatch) -> None:
     runtime = load_runtime_config()
 
     assert runtime.symbol == "AAPL"
+    assert runtime.symbols == ("AAPL", "AMZN", "GOOGL", "META", "MSFT", "NVDA", "PLTR", "TSLA")
+    assert runtime.benchmark_symbol == "IXIC"
+    assert runtime.session_id == "nasdaq-live"
     assert runtime.bars == 60
     assert runtime.provider == "synthetic"
     assert runtime.api_base_url is None
@@ -33,9 +39,12 @@ def test_load_runtime_config_defaults(monkeypatch) -> None:
 
 def test_load_runtime_config_reads_environment(monkeypatch) -> None:
     monkeypatch.setenv("EDGE_SYMBOL", "MSFT")
+    monkeypatch.setenv("EDGE_SYMBOLS", "MSFT,NVDA")
     monkeypatch.setenv("EDGE_BARS", "120")
     monkeypatch.setenv("EDGE_PROVIDER", "alpaca")
     monkeypatch.setenv("API_BASE_URL", "https://api.example.com")
+    monkeypatch.setenv("EDGE_BENCHMARK_SYMBOL", "IXIC")
+    monkeypatch.setenv("EDGE_SESSION_ID", "session-42")
     monkeypatch.setenv("ALPACA_DATA_FEED", "sip")
     monkeypatch.setenv("ALPACA_API_KEY_ID", "key")
     monkeypatch.setenv("ALPACA_API_SECRET_KEY", "secret")
@@ -47,6 +56,9 @@ def test_load_runtime_config_reads_environment(monkeypatch) -> None:
     runtime = load_runtime_config()
 
     assert runtime.symbol == "MSFT"
+    assert runtime.symbols == ("MSFT", "NVDA")
+    assert runtime.benchmark_symbol == "IXIC"
+    assert runtime.session_id == "session-42"
     assert runtime.bars == 120
     assert runtime.provider == "alpaca"
     assert runtime.api_base_url == "https://api.example.com"
@@ -82,3 +94,23 @@ def test_load_runtime_config_invalid_log_level_falls_back(monkeypatch) -> None:
     runtime = load_runtime_config()
 
     assert runtime.log_level == "INFO"
+
+
+def test_load_runtime_config_blank_benchmark_and_session_fallback_to_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("EDGE_BENCHMARK_SYMBOL", "   ")
+    monkeypatch.setenv("EDGE_SESSION_ID", "   ")
+
+    runtime = load_runtime_config()
+
+    assert runtime.benchmark_symbol == "IXIC"
+    assert runtime.session_id == "nasdaq-live"
+
+
+def test_load_runtime_config_legacy_symbol_env_accepts_comma_separated_values(monkeypatch) -> None:
+    monkeypatch.delenv("EDGE_SYMBOLS", raising=False)
+    monkeypatch.setenv("EDGE_SYMBOL", "MSFT, NVDA, MSFT")
+
+    runtime = load_runtime_config()
+
+    assert runtime.symbols == ("MSFT", "NVDA")
+    assert runtime.symbol == "MSFT"
