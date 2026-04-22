@@ -64,7 +64,6 @@ class ApiSessionClient:
         except error.URLError as exc:
             raise RuntimeError("failed to save market snapshot") from exc
 
-
 def _clean_symbol(value: object) -> str:
     if value is None:
         return ""
