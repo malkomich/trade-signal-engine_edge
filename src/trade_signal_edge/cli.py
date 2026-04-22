@@ -75,7 +75,11 @@ def _run_watch_loop(args: argparse.Namespace) -> None:
     backoff = interval
     status_server = None
     try:
-        status_server = start_status_server(max(args.http_port, 1))
+        try:
+            status_server = start_status_server(max(args.http_port, 1))
+        except Exception as error:
+            print(_json_error("runtime", error))
+            raise SystemExit(1) from error
         while True:
             try:
                 runtime = load_runtime_config()

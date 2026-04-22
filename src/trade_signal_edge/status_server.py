@@ -45,6 +45,7 @@ class WorkerStatusStore:
                 self._status.provider = provider
                 self._status.action = action
                 self._status.next_state = next_state
+                self._status.last_error = _sanitize_error(last_error)
             else:
                 if symbol is not None:
                     self._status.symbol = symbol
@@ -54,7 +55,8 @@ class WorkerStatusStore:
                     self._status.action = action
                 if next_state is not None:
                     self._status.next_state = next_state
-            self._status.last_error = _sanitize_error(last_error)
+                if last_error is not None:
+                    self._status.last_error = _sanitize_error(last_error)
             self._status.last_run_at = datetime.now(tz=timezone.utc)
 
     def is_ready(self) -> bool:
