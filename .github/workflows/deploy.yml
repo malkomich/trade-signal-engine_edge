@@ -27,6 +27,30 @@ jobs:
           docker --version
           docker compose version
 
+      - name: Prepare Alpaca credentials
+        env:
+          ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
+          ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
+        run: |
+          set -e
+          install_dir="$HOME/.trade-signal-engine-edge"
+          mkdir -p "$install_dir"
+          key_id_file="$install_dir/alpaca-api-key-id"
+          secret_file="$install_dir/alpaca-api-secret-key"
+
+          if [ -z "$ALPACA_API_KEY_ID" ] || [ -z "$ALPACA_API_SECRET_KEY" ]; then
+            echo "missing Alpaca credentials" >&2
+            exit 1
+          fi
+
+          printf '%s' "$ALPACA_API_KEY_ID" > "$key_id_file"
+          printf '%s' "$ALPACA_API_SECRET_KEY" > "$secret_file"
+          chmod 600 "$key_id_file" "$secret_file"
+          {
+            echo "ALPACA_API_KEY_ID_FILE=$key_id_file"
+            echo "ALPACA_API_SECRET_KEY_FILE=$secret_file"
+          } >> "$GITHUB_ENV"
+
       - name: Deploy on Raspberry Pi
         env:
           EDGE_SYMBOLS: AAPL,AMZN,GOOGL,META,MSFT,NVDA,PLTR,TSLA
