@@ -156,8 +156,8 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     signal_engine = SignalEngine()
     session_client = ApiSessionClient(api_base_url) if api_base_url else None
     open_symbols = session_client.load_open_symbols(runtime.session_id) if session_client else set()
-    benchmark_snapshot = _load_benchmark_snapshot(provider, indicator_calculator, runtime.benchmark_symbol, bars)
-    if benchmark_snapshot is None:
+    benchmark_payload = _load_benchmark_snapshot(provider, indicator_calculator, runtime.benchmark_symbol, bars)
+    if benchmark_payload is None:
         report = {
             "session_active": True,
             "error": f"benchmark {runtime.benchmark_symbol}: no history found",
@@ -170,30 +170,28 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         }
         print(json.dumps(report, indent=2))
         return report
+    benchmark_snapshot, benchmark_series = benchmark_payload
     publisher = HttpDecisionPublisher(api_base_url, runtime.session_id) if api_base_url else None
 
     decisions: list[dict[str, object]] = []
     errors: list[str] = []
-    benchmark_bars = provider.history(runtime.benchmark_symbol, bars)
-    if benchmark_bars:
-        try:
-            benchmark_series = ingest_bars(benchmark_bars)
-            benchmark_payload = _build_market_snapshot_payload(
-                session_id=runtime.session_id,
-                symbol=runtime.benchmark_symbol,
-                bars_series=benchmark_series,
-                snapshot=benchmark_snapshot,
-                entry_score=0.0,
-                exit_score=0.0,
-                decision_action=None,
-                next_state="BENCHMARK",
-                benchmark_symbol=runtime.benchmark_symbol,
-                regime="benchmark snapshot",
-            )
-            if session_client is not None:
-                session_client.publish_market_snapshot(runtime.session_id, benchmark_payload)
-        except Exception as error:
-            errors.append(f"{runtime.benchmark_symbol}: market snapshot publish failed: {error}")
+    try:
+        benchmark_market_payload = _build_market_snapshot_payload(
+            session_id=runtime.session_id,
+            symbol=runtime.benchmark_symbol,
+            bars_series=benchmark_series,
+            snapshot=benchmark_snapshot,
+            entry_score=0.0,
+            exit_score=0.0,
+            decision_action=None,
+            next_state="BENCHMARK",
+            benchmark_symbol=runtime.benchmark_symbol,
+            regime="benchmark snapshot",
+        )
+        if session_client is not None:
+            session_client.publish_market_snapshot(runtime.session_id, benchmark_market_payload)
+    except Exception as error:
+        errors.append(f"{runtime.benchmark_symbol}: market snapshot publish failed: {error}")
     for current_symbol in symbols:
         try:
             history = provider.history(current_symbol, bars)
@@ -295,7 +293,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         "latest_symbol": latest["symbol"] if latest else None,
         "errors": errors,
         "error": "; ".join(errors) if errors else None,
-        "timestamp": latest["snapshot"]["timestamp"] if latest else datetime.now(tz=timezone.utc).isoformat(),
+        "timestamp": _iso_timestamp(latest["snapshot"]["timestamp"]) if latest else datetime.now(tz=timezone.utc).isoformat(),
     }
 
 
@@ -316,7 +314,7 @@ def _load_benchmark_snapshot(provider, indicator_calculator: IndicatorCalculator
     if not history:
         return None
     bars_series = ingest_bars(history)
-    return indicator_calculator.compute(bars_series)
+    return indicator_calculator.compute(bars_series), bars_series
 
 
 def _build_market_snapshot_payload(
@@ -368,3 +366,11 @@ def _build_market_snapshot_payload(
         "reasons": [],
     }
     return payload
+
+
+def _iso_timestamp(value: object) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, str):
+        return value
+    return datetime.now(tz=timezone.utc).isoformat()

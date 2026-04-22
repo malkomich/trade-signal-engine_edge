@@ -59,14 +59,15 @@ class SignalEngine:
         exit_raw += benchmark_exit
 
         max_weight = sum(float(weight) for weight in self.config.weights.values())
-        benchmark_weight = 1.0
+        # The benchmark term is capped separately in _benchmark_bias, so use its theoretical max here.
+        benchmark_weight = 0.575
         entry_score = _score_from_signal(entry_raw, max_weight + benchmark_weight)
         exit_score = _score_from_signal(exit_raw, max_weight + benchmark_weight)
-        hard_exit_veto = self._hard_exit_veto(snapshot)
+        strong_exit_pressure = self._strong_exit_pressure(snapshot)
 
-        if state is TradeState.ACCEPTED_OPEN and (exit_score >= self.config.exit_threshold or hard_exit_veto):
-            if hard_exit_veto:
-                reasons.append("exit-veto")
+        if state is TradeState.ACCEPTED_OPEN and (exit_score >= self.config.exit_threshold or strong_exit_pressure):
+            if strong_exit_pressure:
+                reasons.append("exit-pressure")
             action = SignalAction.SELL_ALERT
             if "exit-qualified" not in reasons:
                 reasons.append("exit-qualified")
@@ -88,7 +89,7 @@ class SignalEngine:
             reasons=tuple(reasons),
         )
 
-    def _hard_exit_veto(self, snapshot: IndicatorSnapshot) -> bool:
+    def _strong_exit_pressure(self, snapshot: IndicatorSnapshot) -> bool:
         if snapshot.rsi is not None and snapshot.stochastic_k is not None:
             if snapshot.rsi >= 70 and snapshot.stochastic_k >= 80:
                 return True

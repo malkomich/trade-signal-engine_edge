@@ -60,7 +60,7 @@ def test_signal_engine_vetoes_entries_when_exit_pressure_is_high() -> None:
     assert "entry-qualified" in decision.reasons
 
 
-def test_signal_engine_uses_exit_veto_for_open_positions() -> None:
+def test_signal_engine_uses_exit_pressure_for_open_positions() -> None:
     snapshot = IndicatorSnapshot(
         symbol="TSLA",
         timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
@@ -85,7 +85,7 @@ def test_signal_engine_uses_exit_veto_for_open_positions() -> None:
     decision = SignalEngine().evaluate(snapshot, TradeState.ACCEPTED_OPEN)
 
     assert decision.action is SignalAction.SELL_ALERT
-    assert "exit-veto" in decision.reasons
+    assert "exit-pressure" in decision.reasons
 
 
 def test_signal_engine_accounts_for_benchmark_alignment() -> None:

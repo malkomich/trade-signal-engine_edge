@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from unittest.mock import Mock, patch
 
 from trade_signal_edge.api_client import _clean_symbol
 from trade_signal_edge.api_client import ApiSessionClient
+from trade_signal_edge.api_client import json_dumps
 
 
 def test_load_open_symbols_accepts_accepted_open_status() -> None:
@@ -89,3 +91,11 @@ def test_clean_symbol_handles_null_and_non_string_values() -> None:
     assert _clean_symbol(None) == ""
     assert _clean_symbol(123) == ""
     assert _clean_symbol(" nvda ") == "NVDA"
+
+
+def test_json_dumps_handles_dataclass_types_without_unpacking_the_class() -> None:
+    @dataclass
+    class Dummy:
+        value: str = "ok"
+
+    assert json_dumps(Dummy).startswith('"')

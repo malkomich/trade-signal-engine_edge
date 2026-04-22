@@ -73,6 +73,6 @@ def _clean_symbol(value: object) -> str:
 
 
 def json_dumps(payload: object) -> str:
-    if is_dataclass(payload):
+    if is_dataclass(payload) and not isinstance(payload, type):
         payload = asdict(payload)
     return json.dumps(payload, default=str)
