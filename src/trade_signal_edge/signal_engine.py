@@ -64,15 +64,15 @@ class SignalEngine:
         exit_score = _score_from_signal(exit_raw, max_weight + benchmark_weight)
         hard_exit_veto = self._hard_exit_veto(snapshot)
 
-        if state is TradeState.FLAT and (exit_score >= self.config.exit_threshold or hard_exit_veto):
-            reasons.append("exit-veto")
-            action = SignalAction.HOLD
+        if state is TradeState.ACCEPTED_OPEN and (exit_score >= self.config.exit_threshold or hard_exit_veto):
+            if hard_exit_veto:
+                reasons.append("exit-veto")
+            action = SignalAction.SELL_ALERT
+            if "exit-qualified" not in reasons:
+                reasons.append("exit-qualified")
         elif state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= self.config.entry_threshold:
             action = SignalAction.BUY_ALERT
             reasons.append("entry-qualified")
-        elif state is TradeState.ACCEPTED_OPEN and exit_score >= self.config.exit_threshold:
-            action = SignalAction.SELL_ALERT
-            reasons.append("exit-qualified")
         else:
             action = SignalAction.HOLD
 

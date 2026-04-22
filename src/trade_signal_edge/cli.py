@@ -174,6 +174,26 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
 
     decisions: list[dict[str, object]] = []
     errors: list[str] = []
+    benchmark_bars = provider.history(runtime.benchmark_symbol, bars)
+    if benchmark_bars:
+        try:
+            benchmark_series = ingest_bars(benchmark_bars)
+            benchmark_payload = _build_market_snapshot_payload(
+                session_id=runtime.session_id,
+                symbol=runtime.benchmark_symbol,
+                bars_series=benchmark_series,
+                snapshot=benchmark_snapshot,
+                entry_score=0.0,
+                exit_score=0.0,
+                decision_action=None,
+                next_state="BENCHMARK",
+                benchmark_symbol=runtime.benchmark_symbol,
+                regime="benchmark snapshot",
+            )
+            if session_client is not None:
+                session_client.publish_market_snapshot(runtime.session_id, benchmark_payload)
+        except Exception as error:
+            errors.append(f"{runtime.benchmark_symbol}: market snapshot publish failed: {error}")
     for current_symbol in symbols:
         try:
             history = provider.history(current_symbol, bars)
@@ -198,6 +218,25 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
                 publisher.publish(decision)
             except Exception as error:
                 errors.append(f"{current_symbol}: decision publish failed: {error}")
+        if session_client is not None:
+            try:
+                session_client.publish_market_snapshot(
+                    runtime.session_id,
+                    _build_market_snapshot_payload(
+                        session_id=runtime.session_id,
+                        symbol=current_symbol,
+                        bars_series=bars_series,
+                        snapshot=snapshot,
+                        entry_score=decision.entry_score,
+                        exit_score=decision.exit_score,
+                        decision_action=decision.action.value,
+                        next_state=next_state.value,
+                        benchmark_symbol=runtime.benchmark_symbol,
+                        regime=decision.reasons[-1] if decision.reasons else "live market session",
+                    ),
+                )
+            except Exception as error:
+                errors.append(f"{current_symbol}: market snapshot publish failed: {error}")
         decisions.append(
             {
                 "symbol": current_symbol,
@@ -278,3 +317,54 @@ def _load_benchmark_snapshot(provider, indicator_calculator: IndicatorCalculator
         return None
     bars_series = ingest_bars(history)
     return indicator_calculator.compute(bars_series)
+
+
+def _build_market_snapshot_payload(
+    session_id: str,
+    symbol: str,
+    bars_series,
+    snapshot,
+    entry_score: float,
+    exit_score: float,
+    decision_action: str | None,
+    next_state: str,
+    benchmark_symbol: str,
+    regime: str,
+) -> dict[str, object]:
+    latest_bar = bars_series[-1]
+    payload = {
+        "session_id": session_id,
+        "symbol": symbol,
+        "timestamp": snapshot.timestamp.isoformat(),
+        "created_at": snapshot.timestamp.isoformat(),
+        "updated_at": snapshot.timestamp.isoformat(),
+        "open": latest_bar.open,
+        "high": latest_bar.high,
+        "low": latest_bar.low,
+        "close": latest_bar.close,
+        "volume": latest_bar.volume,
+        "sma_fast": snapshot.sma_fast,
+        "sma_slow": snapshot.sma_slow,
+        "ema_fast": snapshot.ema_fast,
+        "ema_slow": snapshot.ema_slow,
+        "vwap": snapshot.vwap,
+        "rsi": snapshot.rsi,
+        "atr": snapshot.atr,
+        "plus_di": snapshot.plus_di,
+        "minus_di": snapshot.minus_di,
+        "adx": snapshot.adx,
+        "macd": snapshot.macd,
+        "macd_signal": snapshot.macd_signal,
+        "macd_histogram": snapshot.macd_histogram,
+        "stochastic_k": snapshot.stochastic_k,
+        "stochastic_d": snapshot.stochastic_d,
+        "entry_score": entry_score,
+        "exit_score": exit_score,
+        "event_type": "market.snapshot",
+        "signal_action": decision_action or "HOLD",
+        "signal_state": next_state,
+        "signal_regime": regime,
+        "benchmark_symbol": benchmark_symbol,
+        "reasons": [],
+    }
+    return payload
