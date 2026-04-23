@@ -24,8 +24,11 @@ services:
       MARKET_HOLIDAYS: ${MARKET_HOLIDAYS:-}
       MARKET_EARLY_CLOSES: ${MARKET_EARLY_CLOSES:-}
       ALPACA_DATA_FEED: ${ALPACA_DATA_FEED:-iex}
-      ALPACA_API_KEY_ID_FILE: ${ALPACA_API_KEY_ID_FILE:-}
-      ALPACA_API_SECRET_KEY_FILE: ${ALPACA_API_SECRET_KEY_FILE:-}
+      ALPACA_API_KEY_ID_FILE: /run/secrets/alpaca-api-key-id
+      ALPACA_API_SECRET_KEY_FILE: /run/secrets/alpaca-api-secret-key
+    volumes:
+      - ${ALPACA_API_KEY_ID_FILE:?ALPACA_API_KEY_ID_FILE is required}:/run/secrets/alpaca-api-key-id:ro
+      - ${ALPACA_API_SECRET_KEY_FILE:?ALPACA_API_SECRET_KEY_FILE is required}:/run/secrets/alpaca-api-secret-key:ro
     healthcheck:
       test:
         [
