@@ -67,7 +67,7 @@ jobs:
           ALPACA_DATA_FEED: iex
         run: |
           set -e
-          docker compose up -d --build --remove-orphans
+          docker compose up -d --build
           python - <<'PY'
           import os
           import sys
