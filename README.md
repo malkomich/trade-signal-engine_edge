@@ -32,13 +32,13 @@ make run
 docker compose up -d --build
 ```
 
-The compose file sets the project name to `trade-signal-engine-server`, so Dozzle groups the
+The compose file sets the project name to `trading-signal-engine-server`, so Dozzle groups the
 edge container with the API service on the Raspberry Pi.
 
 Inside that shared Compose project, the edge worker talks to the API container through the
 service name `api`, so `API_BASE_URL` defaults to `http://api:8080` in Docker.
 
-The worker also exposes a lightweight status page on `http://localhost:18081/edge` so the
+The worker also exposes a lightweight status page on `http://localhost:18181/edge` so the
 Raspberry Pi proxy can route `https://tradesignalengine.backend.synapsesea.com/edge` to a
 visible runtime snapshot while Dozzle streams the container logs.
 
