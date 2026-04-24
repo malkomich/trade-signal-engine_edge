@@ -18,6 +18,8 @@ def ingest_bars(bars: Sequence[Bar]) -> list[Bar]:
 def resample_bars(bars: Sequence[Bar], interval_minutes: int) -> list[Bar]:
     if interval_minutes <= 1:
         return list(bars)
+    if not bars:
+        return []
 
     normalized = _normalize_bars(bars)
     if not normalized:
@@ -88,11 +90,9 @@ def _synthetic_bar(previous: Bar, timestamp: datetime) -> Bar:
 
 
 def _bucket_key(timestamp: datetime, interval_minutes: int) -> datetime:
-    total_minutes = timestamp.hour * 60 + timestamp.minute
+    total_minutes = int(timestamp.timestamp() // 60)
     bucket_minutes = (total_minutes // interval_minutes) * interval_minutes
-    hour = bucket_minutes // 60
-    minute = bucket_minutes % 60
-    return timestamp.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return datetime.fromtimestamp(bucket_minutes * 60, tz=timestamp.tzinfo)
 
 
 def _aggregate_bucket(bucket: Sequence[Bar], bucket_key: datetime) -> Bar:

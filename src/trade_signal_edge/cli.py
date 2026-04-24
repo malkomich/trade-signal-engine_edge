@@ -12,7 +12,7 @@ from .api_client import ApiSessionClient
 from .config import load_runtime_config
 from .indicators import IndicatorCalculator
 from .ingestion import ingest_bars, resample_bars
-from .models import SignalAction, SignalConfig, SignalDecision, TradeState
+from .models import SignalConfig, SignalDecision, TradeState
 from .publisher import HttpDecisionPublisher
 from .providers import (
     ProviderName,
@@ -77,11 +77,7 @@ def _parse_symbols(value: Any, fallback: tuple[str, ...]) -> tuple[str, ...]:
     symbols = tuple(item for item in items if item)
     if not symbols:
         return fallback
-    deduped: list[str] = []
-    for symbol in symbols:
-        if symbol not in deduped:
-            deduped.append(symbol)
-    return tuple(deduped)
+    return tuple(dict.fromkeys(symbols))
 
 
 def _config_fields_map(payload: object) -> dict[str, Any]:
@@ -494,28 +490,24 @@ def _combine_timeframe_decisions(
     entry_score = entry_total / active_weight
     exit_score = exit_total / active_weight
 
-    strong_exit_pressure = False
-    if primary_snapshot is not None:
-        strong_exit_pressure = signal_engine._strong_exit_pressure(primary_snapshot)
-
-    if state is TradeState.ACCEPTED_OPEN and (exit_score >= signal_engine.config.exit_threshold or strong_exit_pressure):
-        action = SignalAction.SELL_ALERT
-        if strong_exit_pressure:
-            reasons.append("exit-pressure")
-        reasons.append("exit-qualified")
-    elif state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= signal_engine.config.entry_threshold:
-        action = SignalAction.BUY_ALERT
-        reasons.append("entry-qualified")
-    else:
-        action = SignalAction.HOLD
+    strong_exit_pressure = any(
+        signal_engine.is_strong_exit_pressure(snapshot)
+        for snapshot in snapshots_by_timeframe.values()
+        if snapshot is not None
+    )
+    action, action_reasons = signal_engine.decide_action(
+        entry_score,
+        exit_score,
+        state,
+        primary_snapshot,
+        strong_exit_pressure=strong_exit_pressure,
+    )
+    reasons.extend(action_reasons)
 
     if primary_decision is not None and primary_decision.reasons:
         reasons.extend(primary_decision.reasons)
 
-    deduped_reasons: list[str] = []
-    for reason in reasons:
-        if reason and reason not in deduped_reasons:
-            deduped_reasons.append(reason)
+    deduped_reasons = list(dict.fromkeys(reason for reason in reasons if reason))
 
     timestamp = primary_snapshot.timestamp if primary_snapshot is not None else datetime.now(tz=timezone.utc)
     return SignalDecision(

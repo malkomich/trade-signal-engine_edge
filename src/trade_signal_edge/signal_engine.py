@@ -64,19 +64,8 @@ class SignalEngine:
         benchmark_exit_weight = 0.425
         entry_score = _score_from_signal(entry_raw, max_weight + benchmark_entry_weight)
         exit_score = _score_from_signal(exit_raw, max_weight + benchmark_exit_weight)
-        strong_exit_pressure = self._strong_exit_pressure(snapshot)
-
-        if state is TradeState.ACCEPTED_OPEN and (exit_score >= self.config.exit_threshold or strong_exit_pressure):
-            if strong_exit_pressure:
-                reasons.append("exit-pressure")
-            action = SignalAction.SELL_ALERT
-            if "exit-qualified" not in reasons:
-                reasons.append("exit-qualified")
-        elif state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= self.config.entry_threshold:
-            action = SignalAction.BUY_ALERT
-            reasons.append("entry-qualified")
-        else:
-            action = SignalAction.HOLD
+        action, action_reasons = self.decide_action(entry_score, exit_score, state, snapshot)
+        reasons.extend(action_reasons)
 
         if benchmark_reason is not None:
             reasons.append(benchmark_reason)
@@ -90,7 +79,32 @@ class SignalEngine:
             reasons=tuple(reasons),
         )
 
-    def _strong_exit_pressure(self, snapshot: IndicatorSnapshot) -> bool:
+    def decide_action(
+        self,
+        entry_score: float,
+        exit_score: float,
+        state: TradeState,
+        snapshot: IndicatorSnapshot | None = None,
+        strong_exit_pressure: bool | None = None,
+    ) -> tuple[SignalAction, tuple[str, ...]]:
+        if strong_exit_pressure is None:
+            strong_exit_pressure = self.is_strong_exit_pressure(snapshot)
+
+        if state is TradeState.ACCEPTED_OPEN and (exit_score >= self.config.exit_threshold or strong_exit_pressure):
+            reasons: list[str] = []
+            if strong_exit_pressure:
+                reasons.append("exit-pressure")
+            reasons.append("exit-qualified")
+            return SignalAction.SELL_ALERT, tuple(reasons)
+
+        if state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= self.config.entry_threshold:
+            return SignalAction.BUY_ALERT, ("entry-qualified",)
+
+        return SignalAction.HOLD, ()
+
+    def is_strong_exit_pressure(self, snapshot: IndicatorSnapshot | None) -> bool:
+        if snapshot is None:
+            return False
         if snapshot.rsi is not None and snapshot.stochastic_k is not None:
             if snapshot.rsi >= 70 and snapshot.stochastic_k >= 80:
                 return True

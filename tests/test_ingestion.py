@@ -50,3 +50,20 @@ def test_resample_bars_aggregates_open_high_low_close_volume() -> None:
     assert resampled[0].low == 99.5
     assert resampled[0].close == 102.5
     assert resampled[0].volume == 4_500.0
+
+
+def test_resample_bars_returns_empty_for_empty_input() -> None:
+    assert resample_bars([], 5) == []
+
+
+def test_resample_bars_keeps_day_boundaries_separate() -> None:
+    bars = [
+        Bar(symbol="AAPL", timestamp=datetime(2026, 4, 21, 23, 55, tzinfo=timezone.utc), open=100.0, high=101.0, low=99.5, close=100.5, volume=1_000.0),
+        Bar(symbol="AAPL", timestamp=datetime(2026, 4, 22, 0, 5, tzinfo=timezone.utc), open=101.0, high=102.0, low=100.5, close=101.5, volume=1_500.0),
+    ]
+
+    resampled = resample_bars(bars, 15)
+
+    assert len(resampled) == 2
+    assert resampled[0].timestamp == datetime(2026, 4, 21, 23, 45, tzinfo=timezone.utc)
+    assert resampled[1].timestamp == datetime(2026, 4, 22, 0, 0, tzinfo=timezone.utc)

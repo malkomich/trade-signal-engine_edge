@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from trade_signal_edge.cli import _combine_timeframe_decisions
+from trade_signal_edge.models import IndicatorSnapshot, SignalAction, SignalDecision, SignalConfig, TradeState
+from trade_signal_edge.signal_engine import SignalEngine
+
+
+def make_decision(symbol: str, timestamp: datetime, entry_score: float, exit_score: float, reasons: tuple[str, ...] = ()) -> SignalDecision:
+    return SignalDecision(
+        symbol=symbol,
+        timestamp=timestamp,
+        entry_score=entry_score,
+        exit_score=exit_score,
+        action=SignalAction.HOLD,
+        reasons=reasons,
+    )
+
+
+def test_combine_timeframe_decisions_prefers_weighted_entry_and_missing_timeframes() -> None:
+    timestamp = datetime(2026, 4, 24, 13, 30, tzinfo=timezone.utc)
+    snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=timestamp,
+        close=102.0,
+        sma_fast=101.5,
+        sma_slow=100.2,
+        ema_fast=101.8,
+        ema_slow=100.6,
+        vwap=100.8,
+        rsi=62.0,
+        atr=1.25,
+        plus_di=28.0,
+        minus_di=14.0,
+        adx=26.0,
+        macd=1.1,
+        macd_signal=0.85,
+        macd_histogram=0.25,
+        stochastic_k=34.0,
+        stochastic_d=28.0,
+    )
+    engine = SignalEngine(SignalConfig(entry_threshold=0.65, exit_threshold=0.55))
+
+    decision = _combine_timeframe_decisions(
+        "NVDA",
+        {"1m": snapshot},
+        {
+            "1m": make_decision("NVDA", timestamp, 0.82, 0.21, ("1m:trend-aligned",)),
+        },
+        {"1m": 1.0, "5m": 0.0, "15m": 0.0},
+        engine,
+        TradeState.FLAT,
+    )
+
+    assert decision.action is SignalAction.BUY_ALERT
+    assert decision.entry_score == 0.82
+    assert decision.exit_score == 0.21
+    assert "1m:trend-aligned" in decision.reasons
+    assert "entry-qualified" in decision.reasons
+
+
+def test_combine_timeframe_decisions_uses_exit_pressure_for_open_positions() -> None:
+    timestamp = datetime(2026, 4, 24, 13, 30, tzinfo=timezone.utc)
+    primary_snapshot = IndicatorSnapshot(
+        symbol="TSLA",
+        timestamp=timestamp,
+        close=198.0,
+        sma_fast=199.0,
+        sma_slow=198.8,
+        ema_fast=198.9,
+        ema_slow=198.7,
+        vwap=198.2,
+        rsi=54.0,
+        atr=2.2,
+        plus_di=22.0,
+        minus_di=17.0,
+        adx=23.0,
+        macd=0.03,
+        macd_signal=0.02,
+        macd_histogram=0.01,
+        stochastic_k=55.0,
+        stochastic_d=54.0,
+    )
+    exit_pressure_snapshot = IndicatorSnapshot(
+        symbol="TSLA",
+        timestamp=timestamp,
+        close=198.0,
+        sma_fast=200.0,
+        sma_slow=198.8,
+        ema_fast=199.5,
+        ema_slow=198.6,
+        vwap=197.5,
+        rsi=72.0,
+        atr=2.9,
+        plus_di=22.0,
+        minus_di=17.0,
+        adx=23.0,
+        macd=0.15,
+        macd_signal=0.1,
+        macd_histogram=0.05,
+        stochastic_k=88.0,
+        stochastic_d=91.0,
+    )
+    engine = SignalEngine(SignalConfig(entry_threshold=0.65, exit_threshold=0.55))
+
+    decision = _combine_timeframe_decisions(
+        "TSLA",
+        {"1m": primary_snapshot, "5m": exit_pressure_snapshot},
+        {
+            "1m": make_decision("TSLA", timestamp, 0.31, 0.41, ("1m:trend-pressure",)),
+            "5m": make_decision("TSLA", timestamp, 0.28, 0.38, ("5m:trend-pressure",)),
+        },
+        {"1m": 1.0, "5m": 0.8, "15m": 0.0},
+        engine,
+        TradeState.ACCEPTED_OPEN,
+    )
+
+    assert decision.action is SignalAction.SELL_ALERT
+    assert "exit-pressure" in decision.reasons
+    assert "exit-qualified" in decision.reasons
+
+
+def test_combine_timeframe_decisions_handles_zero_weights_without_crashing() -> None:
+    timestamp = datetime(2026, 4, 24, 13, 30, tzinfo=timezone.utc)
+    snapshot = IndicatorSnapshot(symbol="AAPL", timestamp=timestamp, close=190.0)
+    engine = SignalEngine(SignalConfig(entry_threshold=0.65, exit_threshold=0.55))
+
+    decision = _combine_timeframe_decisions(
+        "AAPL",
+        {"1m": snapshot},
+        {"1m": make_decision("AAPL", timestamp, 0.34, 0.29, ("1m:neutral",))},
+        {"1m": 0.0, "5m": 0.0, "15m": 0.0},
+        engine,
+        TradeState.FLAT,
+    )
+
+    assert decision.action is SignalAction.HOLD
+    assert decision.entry_score == 0.0
+    assert decision.exit_score == 0.0
+    assert "1m:neutral" in decision.reasons
