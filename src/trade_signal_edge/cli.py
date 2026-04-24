@@ -273,19 +273,6 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     calendar = load_session_calendar()
     current_time = datetime.now(tz=timezone.utc)
     market_open = calendar.is_open(current_time)
-    if not market_open:
-        report = {
-            "session_active": False,
-            "symbol": runtime.symbol,
-            "symbols": list(runtime.symbols),
-            "provider": runtime.provider,
-            "action": None,
-            "next_state": None,
-            "decision_count": 0,
-            "timestamp": current_time.isoformat(),
-        }
-        print(json.dumps(report, indent=2))
-        return report
 
     try:
         provider_config = load_provider_config(runtime)
@@ -406,6 +393,8 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             continue
         current_window_id = open_windows.get(current_symbol, "")
         state = TradeState.ACCEPTED_OPEN if current_window_id else TradeState.FLAT
+        if not market_open and state is TradeState.FLAT:
+            continue
         timeframe_decisions: dict[str, SignalDecision] = {}
         for timeframe, timeframe_snapshot in snapshots_by_timeframe.items():
             benchmark_for_timeframe = benchmark_snapshots_by_timeframe.get(timeframe, benchmark_snapshot)
@@ -435,10 +424,13 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             next_state = StateMachine().transition(TradeState.ACCEPTED_OPEN, "exit_signal")
         if publisher is not None:
             try:
-                publisher.publish(decision)
-                if session_client is not None and decision.action.value in {"BUY_ALERT", "SELL_ALERT"}:
-                    open_windows = session_client.load_open_windows(runtime.session_id)
-                    current_window_id = open_windows.get(current_symbol, current_window_id)
+                publish_result = publisher.publish(decision)
+                if isinstance(publish_result, dict):
+                    current_window_id = str(
+                        publish_result.get("window_id")
+                        or publish_result.get("windowId")
+                        or current_window_id
+                    ).strip() or current_window_id
             except Exception as error:
                 errors.append(f"{current_symbol}: decision publish failed: {error}")
         if session_client is not None:

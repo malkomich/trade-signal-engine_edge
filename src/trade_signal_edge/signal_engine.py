@@ -237,10 +237,12 @@ class SignalEngine:
         if entry_distance is None and exit_distance is None:
             return 0.0, 0.0, None
         if entry_distance is None:
-            bias = -min(self.config.optimizer_bias_cap, self.config.optimizer_learning_rate * exit_distance)
+            exit_similarity = 1.0 / (1.0 + exit_distance)
+            bias = -min(self.config.optimizer_bias_cap, self.config.optimizer_learning_rate * exit_similarity)
             return bias, -bias, "optimizer profile favors exit"
         if exit_distance is None:
-            bias = min(self.config.optimizer_bias_cap, self.config.optimizer_learning_rate * entry_distance)
+            entry_similarity = 1.0 / (1.0 + entry_distance)
+            bias = min(self.config.optimizer_bias_cap, self.config.optimizer_learning_rate * entry_similarity)
             return bias, -bias, "optimizer profile favors entry"
 
         bias = (exit_distance - entry_distance) * self.config.optimizer_learning_rate
@@ -267,22 +269,22 @@ class SignalEngine:
             return None
         return total / count
 
-    def _snapshot_profile(self, snapshot: IndicatorSnapshot) -> dict[str, float]:
+    def _snapshot_profile(self, snapshot: IndicatorSnapshot) -> dict[str, float | None]:
         return {
             "close": snapshot.close,
-            "sma_fast": snapshot.sma_fast or 0.0,
-            "sma_slow": snapshot.sma_slow or 0.0,
-            "ema_fast": snapshot.ema_fast or 0.0,
-            "ema_slow": snapshot.ema_slow or 0.0,
-            "vwap": snapshot.vwap or 0.0,
-            "rsi": snapshot.rsi or 0.0,
-            "atr": snapshot.atr or 0.0,
-            "plus_di": snapshot.plus_di or 0.0,
-            "minus_di": snapshot.minus_di or 0.0,
-            "adx": snapshot.adx or 0.0,
-            "macd": snapshot.macd or 0.0,
-            "macd_signal": snapshot.macd_signal or 0.0,
-            "macd_histogram": snapshot.macd_histogram or 0.0,
-            "stochastic_k": snapshot.stochastic_k or 0.0,
-            "stochastic_d": snapshot.stochastic_d or 0.0,
+            "sma_fast": snapshot.sma_fast,
+            "sma_slow": snapshot.sma_slow,
+            "ema_fast": snapshot.ema_fast,
+            "ema_slow": snapshot.ema_slow,
+            "vwap": snapshot.vwap,
+            "rsi": snapshot.rsi,
+            "atr": snapshot.atr,
+            "plus_di": snapshot.plus_di,
+            "minus_di": snapshot.minus_di,
+            "adx": snapshot.adx,
+            "macd": snapshot.macd,
+            "macd_signal": snapshot.macd_signal,
+            "macd_histogram": snapshot.macd_histogram,
+            "stochastic_k": snapshot.stochastic_k,
+            "stochastic_d": snapshot.stochastic_d,
         }

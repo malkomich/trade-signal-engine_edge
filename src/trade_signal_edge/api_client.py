@@ -60,7 +60,8 @@ class ApiSessionClient:
             if normalized_status not in {"open", "accepted_open"}:
                 continue
             symbol = _clean_symbol(item.get("symbol"))
-            window_id = str(item.get("id") or "").strip()
+            raw_id = item.get("id")
+            window_id = str(raw_id).strip() if raw_id is not None else ""
             if symbol:
                 open_windows[symbol] = window_id
         return open_windows
