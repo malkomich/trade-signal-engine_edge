@@ -123,6 +123,6 @@ def test_signal_engine_accounts_for_benchmark_alignment() -> None:
     assert decision.action is SignalAction.BUY_ALERT
     assert decision.entry_score > baseline.entry_score
     assert decision.exit_score != baseline.exit_score
-    assert "qqq-aligned" in decision.reasons
+    assert any(reason.startswith("QQQ ") for reason in decision.reasons)
     assert 0.0 <= decision.entry_score <= 1.0
     assert 0.0 <= decision.exit_score <= 1.0

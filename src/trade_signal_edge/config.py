@@ -38,8 +38,10 @@ class RuntimeConfig:
     session_timezone: str = "America/New_York"
     entry_threshold: float = 0.65
     exit_threshold: float = 0.55
-    signal_weights: dict[str, float] = field(default_factory=default_signal_weights)
-    timeframe_weights: dict[str, float] = field(default_factory=default_timeframe_weights)
+    buy_signal_weights: dict[str, float] = field(default_factory=default_signal_weights)
+    sell_signal_weights: dict[str, float] = field(default_factory=default_signal_weights)
+    buy_timeframe_weights: dict[str, float] = field(default_factory=default_timeframe_weights)
+    sell_timeframe_weights: dict[str, float] = field(default_factory=default_timeframe_weights)
     alpaca_feed: str = "iex"
     alpaca_api_key_id: str | None = None
     alpaca_api_secret_key: str | None = None
@@ -68,6 +70,10 @@ def load_runtime_config() -> RuntimeConfig:
         log_level=_parse_log_level(os.getenv("EDGE_LOG_LEVEL"), defaults.log_level),
         metrics_enabled=_parse_bool(os.getenv("EDGE_METRICS_ENABLED")),
         secret_source=(os.getenv("EDGE_SECRET_SOURCE", defaults.secret_source) or defaults.secret_source).strip().lower(),
+        buy_signal_weights=dict(defaults.buy_signal_weights),
+        sell_signal_weights=dict(defaults.sell_signal_weights),
+        buy_timeframe_weights=dict(defaults.buy_timeframe_weights),
+        sell_timeframe_weights=dict(defaults.sell_timeframe_weights),
     )
 
 
