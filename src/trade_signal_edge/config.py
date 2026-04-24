@@ -42,6 +42,10 @@ class RuntimeConfig:
     sell_signal_weights: dict[str, float] = field(default_factory=default_signal_weights)
     buy_timeframe_weights: dict[str, float] = field(default_factory=default_timeframe_weights)
     sell_timeframe_weights: dict[str, float] = field(default_factory=default_timeframe_weights)
+    optimizer_learning_rate: float = 0.12
+    optimizer_bias_cap: float = 0.08
+    entry_profile: dict[str, float] = field(default_factory=dict)
+    exit_profile: dict[str, float] = field(default_factory=dict)
     alpaca_feed: str = "iex"
     alpaca_api_key_id: str | None = None
     alpaca_api_secret_key: str | None = None

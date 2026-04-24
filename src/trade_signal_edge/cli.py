@@ -80,6 +80,18 @@ def _parse_symbols(value: Any, fallback: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(symbols))
 
 
+def _parse_profile_map(value: Any) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    profile: dict[str, float] = {}
+    for key, raw in value.items():
+        normalized_key = str(key).strip()
+        if not normalized_key:
+            continue
+        profile[normalized_key] = _parse_float(raw, 0.0)
+    return profile
+
+
 def _config_fields_map(payload: object) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
@@ -100,10 +112,20 @@ def _config_fields_map(payload: object) -> dict[str, Any]:
     return field_map
 
 
+def _optimization_summary_map(payload: object) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    summary = payload.get("optimization_summary")
+    if not isinstance(summary, dict):
+        return {}
+    return summary
+
+
 def _runtime_from_session_config(runtime, payload: object):
     field_map = _config_fields_map(payload)
+    summary_map = _optimization_summary_map(payload)
     if not field_map:
-        return runtime
+        field_map = {}
 
     symbols = _parse_symbols(field_map.get("monitored_symbols"), runtime.symbols)
     benchmark_symbol = str(field_map.get("benchmark_symbol") or runtime.benchmark_symbol).strip().upper() or runtime.benchmark_symbol
@@ -143,6 +165,12 @@ def _runtime_from_session_config(runtime, payload: object):
             sell_timeframe_weights.get(key, 0.0),
         )
 
+    optimizer_learning_rate = _parse_float(summary_map.get("optimizer_learning_rate"), runtime.optimizer_learning_rate)
+    optimizer_bias_cap = _parse_float(summary_map.get("optimizer_bias_cap"), runtime.optimizer_bias_cap)
+
+    entry_profile = _parse_profile_map(summary_map.get("entry_profile"))
+    exit_profile = _parse_profile_map(summary_map.get("exit_profile"))
+
     return replace(
         runtime,
         symbol=symbols[0] if symbols else runtime.symbol,
@@ -155,6 +183,10 @@ def _runtime_from_session_config(runtime, payload: object):
         sell_signal_weights=sell_signal_weights,
         buy_timeframe_weights=buy_timeframe_weights,
         sell_timeframe_weights=sell_timeframe_weights,
+        optimizer_learning_rate=optimizer_learning_rate,
+        optimizer_bias_cap=optimizer_bias_cap,
+        entry_profile=entry_profile,
+        exit_profile=exit_profile,
     )
 
 
@@ -241,6 +273,19 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     calendar = load_session_calendar()
     current_time = datetime.now(tz=timezone.utc)
     market_open = calendar.is_open(current_time)
+    if not market_open:
+        report = {
+            "session_active": False,
+            "symbol": runtime.symbol,
+            "symbols": list(runtime.symbols),
+            "provider": runtime.provider,
+            "action": None,
+            "next_state": None,
+            "decision_count": 0,
+            "timestamp": current_time.isoformat(),
+        }
+        print(json.dumps(report, indent=2))
+        return report
 
     try:
         provider_config = load_provider_config(runtime)
@@ -259,7 +304,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             session_config = session_client.load_session_config(runtime.session_id)
         except Exception as error:
             errors.append(f"session config load failed: {error}")
-    runtime = _runtime_from_session_config(runtime, session_config)
+        runtime = _runtime_from_session_config(runtime, session_config)
 
     symbol = (args.symbol or runtime.symbol).strip().upper()
     bars = args.bars or runtime.bars
@@ -276,14 +321,18 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             sell_weights=runtime.sell_signal_weights,
             buy_timeframe_weights=runtime.buy_timeframe_weights,
             sell_timeframe_weights=runtime.sell_timeframe_weights,
+            entry_profile=runtime.entry_profile,
+            exit_profile=runtime.exit_profile,
+            optimizer_learning_rate=runtime.optimizer_learning_rate,
+            optimizer_bias_cap=runtime.optimizer_bias_cap,
         )
     )
-    open_symbols = set()
+    open_windows: dict[str, str] = {}
     if session_client is not None:
         try:
-            open_symbols = session_client.load_open_symbols(runtime.session_id)
+            open_windows = session_client.load_open_windows(runtime.session_id)
         except Exception as error:
-            errors.append(f"open symbols load failed: {error}")
+            errors.append(f"open windows load failed: {error}")
     benchmark_payload = _load_benchmark_snapshot(provider, indicator_calculator, runtime.benchmark_symbol, bars)
     if benchmark_payload is None:
         report = {
@@ -324,6 +373,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             next_state="BENCHMARK",
             benchmark_symbol=runtime.benchmark_symbol,
             regime="benchmark snapshot",
+            window_id="",
         )
         if session_client is not None:
             session_client.publish_market_snapshot(runtime.session_id, benchmark_market_payload)
@@ -354,9 +404,8 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         if snapshot is None:
             errors.append(f"{current_symbol}: missing 1m snapshot")
             continue
-        state = TradeState.ACCEPTED_OPEN if current_symbol in open_symbols else TradeState.FLAT
-        if not market_open and state is TradeState.FLAT:
-            continue
+        current_window_id = open_windows.get(current_symbol, "")
+        state = TradeState.ACCEPTED_OPEN if current_window_id else TradeState.FLAT
         timeframe_decisions: dict[str, SignalDecision] = {}
         for timeframe, timeframe_snapshot in snapshots_by_timeframe.items():
             benchmark_for_timeframe = benchmark_snapshots_by_timeframe.get(timeframe, benchmark_snapshot)
@@ -387,6 +436,9 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         if publisher is not None:
             try:
                 publisher.publish(decision)
+                if session_client is not None and decision.action.value in {"BUY_ALERT", "SELL_ALERT"}:
+                    open_windows = session_client.load_open_windows(runtime.session_id)
+                    current_window_id = open_windows.get(current_symbol, current_window_id)
             except Exception as error:
                 errors.append(f"{current_symbol}: decision publish failed: {error}")
         if session_client is not None:
@@ -404,6 +456,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
                         next_state=next_state.value,
                         benchmark_symbol=runtime.benchmark_symbol,
                         regime=decision.reasons[-1] if decision.reasons else "live market session",
+                        window_id=current_window_id,
                     ),
                 )
             except Exception as error:
@@ -570,10 +623,12 @@ def _build_market_snapshot_payload(
     next_state: str,
     benchmark_symbol: str,
     regime: str,
+    window_id: str,
 ) -> dict[str, object]:
     latest_bar = bars_series[-1]
     payload = {
         "session_id": session_id,
+        "window_id": window_id,
         "symbol": symbol,
         "timestamp": snapshot.timestamp.isoformat(),
         "created_at": snapshot.timestamp.isoformat(),

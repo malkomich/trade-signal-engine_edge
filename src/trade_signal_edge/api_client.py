@@ -32,9 +32,9 @@ class ApiSessionClient:
             return payload
         return None
 
-    def load_open_symbols(self, session_id: str) -> set[str]:
+    def load_open_windows(self, session_id: str) -> dict[str, str]:
         if not self.base_url:
-            return set()
+            return {}
 
         encoded_session_id = parse.quote(session_id, safe="")
         req = request.Request(f"{self.base_url.rstrip('/')}/v1/sessions/{encoded_session_id}/windows", method="GET")
@@ -47,9 +47,9 @@ class ApiSessionClient:
             raise RuntimeError("failed to load open windows") from exc
 
         if not isinstance(payload, list):
-            return set()
+            return {}
 
-        open_symbols: set[str] = set()
+        open_windows: dict[str, str] = {}
         for item in payload:
             if not isinstance(item, dict):
                 continue
@@ -60,9 +60,13 @@ class ApiSessionClient:
             if normalized_status not in {"open", "accepted_open"}:
                 continue
             symbol = _clean_symbol(item.get("symbol"))
+            window_id = str(item.get("id") or "").strip()
             if symbol:
-                open_symbols.add(symbol)
-        return open_symbols
+                open_windows[symbol] = window_id
+        return open_windows
+
+    def load_open_symbols(self, session_id: str) -> set[str]:
+        return set(self.load_open_windows(session_id).keys())
 
     def publish_market_snapshot(self, session_id: str, payload: object) -> None:
         if not self.base_url:
