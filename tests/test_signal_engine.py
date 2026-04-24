@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from trade_signal_edge.models import IndicatorSnapshot, SignalAction, TradeState
+from trade_signal_edge.models import IndicatorSnapshot, SignalAction, SignalConfig, TradeState
 from trade_signal_edge.signal_engine import SignalEngine
 
 
@@ -58,6 +58,35 @@ def test_signal_engine_vetoes_entries_when_exit_pressure_is_high() -> None:
 
     assert decision.action is SignalAction.HOLD
     assert decision.reasons == ()
+
+
+def test_signal_engine_uses_configured_entry_exit_margin() -> None:
+    snapshot = IndicatorSnapshot(
+        symbol="AAPL",
+        timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
+        close=190.0,
+        sma_fast=189.5,
+        sma_slow=188.8,
+        ema_fast=189.7,
+        ema_slow=189.1,
+        vwap=189.0,
+        rsi=57.0,
+        atr=1.1,
+        plus_di=23.0,
+        minus_di=16.0,
+        adx=22.0,
+        macd=0.45,
+        macd_signal=0.3,
+        macd_histogram=0.15,
+        stochastic_k=49.0,
+        stochastic_d=45.0,
+    )
+
+    loose = SignalEngine(SignalConfig(entry_threshold=0.65, exit_threshold=0.55, entry_exit_margin=0.0)).evaluate(snapshot, TradeState.FLAT)
+    strict = SignalEngine(SignalConfig(entry_threshold=0.65, exit_threshold=0.55, entry_exit_margin=0.8)).evaluate(snapshot, TradeState.FLAT)
+
+    assert loose.action is SignalAction.BUY_ALERT
+    assert strict.action is SignalAction.HOLD
 
 
 def test_signal_engine_uses_exit_pressure_for_open_positions() -> None:
