@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from unittest.mock import Mock
 
-from trade_signal_edge.cli import _combine_timeframe_decisions
+from trade_signal_edge.cli import _combine_timeframe_decisions, _resolve_window_id_after_publish
 from trade_signal_edge.models import IndicatorSnapshot, SignalAction, SignalDecision, SignalConfig, TradeState
 from trade_signal_edge.signal_engine import SignalEngine
 
@@ -183,3 +184,20 @@ def test_combine_timeframe_decisions_handles_zero_weights_without_crashing() -> 
     assert decision.entry_score == 0.0
     assert decision.exit_score == 0.0
     assert decision.reasons == ()
+
+
+def test_resolve_window_id_after_publish_falls_back_to_open_windows_when_response_is_empty() -> None:
+    session_client = Mock()
+    session_client.load_open_windows.return_value = {"NVDA": "session:NVDA:decision-1"}
+
+    resolved = _resolve_window_id_after_publish(
+        publish_result=None,
+        session_client=session_client,
+        session_id="session-1",
+        symbol="NVDA",
+        current_window_id="",
+        action=SignalAction.BUY_ALERT,
+    )
+
+    assert resolved == "session:NVDA:decision-1"
+    session_client.load_open_windows.assert_called_once_with("session-1")

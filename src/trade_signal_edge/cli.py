@@ -425,12 +425,14 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         if publisher is not None:
             try:
                 publish_result = publisher.publish(decision)
-                if isinstance(publish_result, dict):
-                    current_window_id = str(
-                        publish_result.get("window_id")
-                        or publish_result.get("windowId")
-                        or current_window_id
-                    ).strip() or current_window_id
+                current_window_id = _resolve_window_id_after_publish(
+                    publish_result,
+                    session_client,
+                    runtime.session_id,
+                    current_symbol,
+                    current_window_id,
+                    decision.action,
+                )
             except Exception as error:
                 errors.append(f"{current_symbol}: decision publish failed: {error}")
         if session_client is not None:
@@ -655,6 +657,31 @@ def _build_market_snapshot_payload(
         "reasons": [],
     }
     return payload
+
+
+def _resolve_window_id_after_publish(
+    publish_result: object,
+    session_client: ApiSessionClient | None,
+    session_id: str,
+    symbol: str,
+    current_window_id: str,
+    action: SignalAction,
+) -> str:
+    if isinstance(publish_result, dict):
+        resolved = str(
+            publish_result.get("window_id")
+            or publish_result.get("windowId")
+            or current_window_id
+        ).strip()
+        if resolved:
+            return resolved
+    if action is not SignalAction.BUY_ALERT or session_client is None:
+        return current_window_id
+    try:
+        refreshed_windows = session_client.load_open_windows(session_id)
+    except Exception:
+        return current_window_id
+    return refreshed_windows.get(symbol, current_window_id) or current_window_id
 
 
 def _iso_timestamp(value: object) -> str:
