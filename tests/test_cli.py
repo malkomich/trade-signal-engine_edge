@@ -46,7 +46,7 @@ def test_combine_timeframe_decisions_prefers_weighted_entry_and_missing_timefram
         "NVDA",
         {"1m": snapshot},
         {
-            "1m": make_decision("NVDA", timestamp, 0.82, 0.21, ("1m:trend-aligned",)),
+            "1m": make_decision("NVDA", timestamp, 0.82, 0.21, ("trend-aligned",)),
         },
         {"1m": 1.0, "5m": 0.0, "15m": 0.0},
         {"1m": 1.0, "5m": 0.0, "15m": 0.0},
@@ -172,7 +172,7 @@ def test_combine_timeframe_decisions_handles_zero_weights_without_crashing() -> 
     decision = _combine_timeframe_decisions(
         "AAPL",
         {"1m": snapshot},
-        {"1m": make_decision("AAPL", timestamp, 0.34, 0.29, ("1m:neutral",))},
+        {"1m": make_decision("AAPL", timestamp, 0.34, 0.29, ("neutral",))},
         {"1m": 0.0, "5m": 0.0, "15m": 0.0},
         {"1m": 0.0, "5m": 0.0, "15m": 0.0},
         engine,
@@ -182,4 +182,4 @@ def test_combine_timeframe_decisions_handles_zero_weights_without_crashing() -> 
     assert decision.action is SignalAction.HOLD
     assert decision.entry_score == 0.0
     assert decision.exit_score == 0.0
-    assert "1m:neutral" in decision.reasons
+    assert decision.reasons == ()

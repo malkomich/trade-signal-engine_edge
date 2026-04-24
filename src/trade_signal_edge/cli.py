@@ -513,7 +513,6 @@ def _combine_timeframe_decisions(
     sell_weight_sum = 0.0
     reasons: list[str] = []
     primary_snapshot = snapshots_by_timeframe.get("1m")
-    primary_decision = timeframe_decisions.get("1m")
 
     for timeframe in TIMEFRAME_KEYS:
         decision = timeframe_decisions.get(timeframe)
@@ -546,9 +545,6 @@ def _combine_timeframe_decisions(
         strong_exit_pressure=strong_exit_pressure,
     )
     reasons.extend(action_reasons)
-
-    if primary_decision is not None and primary_decision.reasons:
-        reasons.extend(primary_decision.reasons)
 
     deduped_reasons = list(dict.fromkeys(reason for reason in reasons if reason))
 
