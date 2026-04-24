@@ -56,8 +56,8 @@ def test_signal_engine_vetoes_entries_when_exit_pressure_is_high() -> None:
 
     decision = SignalEngine().evaluate(snapshot, TradeState.FLAT)
 
-    assert decision.action is SignalAction.BUY_ALERT
-    assert "entry-qualified" in decision.reasons
+    assert decision.action is SignalAction.HOLD
+    assert decision.reasons == ()
 
 
 def test_signal_engine_uses_exit_pressure_for_open_positions() -> None:

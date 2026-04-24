@@ -105,6 +105,8 @@ class SignalEngine:
             return SignalAction.SELL_ALERT, tuple(reasons)
 
         if state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= self.config.entry_threshold:
+            if strong_exit_pressure or exit_score >= entry_score - 0.05:
+                return SignalAction.HOLD, ()
             return SignalAction.BUY_ALERT, ("entry-qualified",)
 
         return SignalAction.HOLD, ()
