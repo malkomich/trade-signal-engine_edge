@@ -12,6 +12,26 @@ class ApiSessionClient:
     base_url: str
     timeout_seconds: int = 10
 
+    def load_session_config(self, session_id: str) -> dict[str, object] | None:
+        if not self.base_url:
+            return None
+
+        encoded_session_id = parse.quote(session_id, safe="")
+        req = request.Request(f"{self.base_url.rstrip('/')}/v1/sessions/{encoded_session_id}/config", method="GET")
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as response:
+                payload = loads(response.read().decode("utf-8"))
+        except error.HTTPError as exc:
+            if exc.code == 404:
+                return None
+            raise RuntimeError(f"failed to load session config: {exc.code}") from exc
+        except error.URLError as exc:
+            raise RuntimeError("failed to load session config") from exc
+
+        if isinstance(payload, dict):
+            return payload
+        return None
+
     def load_open_symbols(self, session_id: str) -> set[str]:
         if not self.base_url:
             return set()

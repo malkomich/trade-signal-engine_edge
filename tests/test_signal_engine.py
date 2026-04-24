@@ -90,7 +90,7 @@ def test_signal_engine_uses_exit_pressure_for_open_positions() -> None:
 
 def test_signal_engine_accounts_for_benchmark_alignment() -> None:
     benchmark = IndicatorSnapshot(
-        symbol="IXIC",
+        symbol="QQQ",
         timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
         close=99.8,
         ema_fast=100.4,
@@ -123,6 +123,6 @@ def test_signal_engine_accounts_for_benchmark_alignment() -> None:
     assert decision.action is SignalAction.BUY_ALERT
     assert decision.entry_score > baseline.entry_score
     assert decision.exit_score != baseline.exit_score
-    assert "ixic-aligned" in decision.reasons
+    assert "qqq-aligned" in decision.reasons
     assert 0.0 <= decision.entry_score <= 1.0
     assert 0.0 <= decision.exit_score <= 1.0

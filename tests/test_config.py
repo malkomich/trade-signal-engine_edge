@@ -23,11 +23,16 @@ def test_load_runtime_config_defaults(monkeypatch) -> None:
 
     assert runtime.symbol == "AAPL"
     assert runtime.symbols == ("AAPL", "AMZN", "GOOGL", "META", "MSFT", "NVDA", "PLTR", "TSLA")
-    assert runtime.benchmark_symbol == "IXIC"
+    assert runtime.benchmark_symbol == "QQQ"
     assert runtime.session_id == "nasdaq-live"
     assert runtime.bars == 60
     assert runtime.provider == "synthetic"
     assert runtime.api_base_url is None
+    assert runtime.session_timezone == "America/New_York"
+    assert runtime.entry_threshold == 0.65
+    assert runtime.exit_threshold == 0.55
+    assert runtime.signal_weights["sma"] == 1.6
+    assert runtime.timeframe_weights == {"1m": 1.0, "5m": 0.75, "15m": 0.5}
     assert runtime.alpaca_feed == "iex"
     assert runtime.alpaca_api_key_id is None
     assert runtime.alpaca_api_secret_key is None
@@ -43,7 +48,7 @@ def test_load_runtime_config_reads_environment(monkeypatch) -> None:
     monkeypatch.setenv("EDGE_BARS", "120")
     monkeypatch.setenv("EDGE_PROVIDER", "alpaca")
     monkeypatch.setenv("API_BASE_URL", "https://api.example.com")
-    monkeypatch.setenv("EDGE_BENCHMARK_SYMBOL", "IXIC")
+    monkeypatch.setenv("EDGE_BENCHMARK_SYMBOL", "QQQ")
     monkeypatch.setenv("EDGE_SESSION_ID", "session-42")
     monkeypatch.setenv("ALPACA_DATA_FEED", "sip")
     monkeypatch.setenv("ALPACA_API_KEY_ID", "key")
@@ -57,11 +62,14 @@ def test_load_runtime_config_reads_environment(monkeypatch) -> None:
 
     assert runtime.symbol == "MSFT"
     assert runtime.symbols == ("MSFT", "NVDA")
-    assert runtime.benchmark_symbol == "IXIC"
+    assert runtime.benchmark_symbol == "QQQ"
     assert runtime.session_id == "session-42"
     assert runtime.bars == 120
     assert runtime.provider == "alpaca"
     assert runtime.api_base_url == "https://api.example.com"
+    assert runtime.session_timezone == "America/New_York"
+    assert runtime.entry_threshold == 0.65
+    assert runtime.exit_threshold == 0.55
     assert runtime.alpaca_feed == "sip"
     assert runtime.alpaca_api_key_id == "key"
     assert runtime.alpaca_api_secret_key == "secret"
@@ -102,7 +110,7 @@ def test_load_runtime_config_blank_benchmark_and_session_fallback_to_defaults(mo
 
     runtime = load_runtime_config()
 
-    assert runtime.benchmark_symbol == "IXIC"
+    assert runtime.benchmark_symbol == "QQQ"
     assert runtime.session_id == "nasdaq-live"
 
 

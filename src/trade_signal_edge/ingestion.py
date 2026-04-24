@@ -15,6 +15,32 @@ def ingest_bars(bars: Sequence[Bar]) -> list[Bar]:
     return _fill_missing_bars(normalized)
 
 
+def resample_bars(bars: Sequence[Bar], interval_minutes: int) -> list[Bar]:
+    if interval_minutes <= 1:
+        return list(bars)
+    if not bars:
+        return []
+
+    normalized = _normalize_bars(bars)
+    if not normalized:
+        return []
+
+    bucketed: list[Bar] = []
+    current_bucket: list[Bar] = []
+    current_key = _bucket_key(normalized[0].timestamp, interval_minutes)
+    for bar in normalized:
+        bucket_key = _bucket_key(bar.timestamp, interval_minutes)
+        if bucket_key != current_key and current_bucket:
+            bucketed.append(_aggregate_bucket(current_bucket, current_key))
+            current_bucket = []
+            current_key = bucket_key
+        current_bucket.append(bar)
+
+    if current_bucket:
+        bucketed.append(_aggregate_bucket(current_bucket, current_key))
+    return bucketed
+
+
 def _normalize_bars(bars: Sequence[Bar]) -> list[Bar]:
     if not bars:
         raise ValueError("bars cannot be empty")
@@ -60,4 +86,24 @@ def _synthetic_bar(previous: Bar, timestamp: datetime) -> Bar:
         low=previous.close,
         close=previous.close,
         volume=0.0,
+    )
+
+
+def _bucket_key(timestamp: datetime, interval_minutes: int) -> datetime:
+    total_minutes = int(timestamp.timestamp() // 60)
+    bucket_minutes = (total_minutes // interval_minutes) * interval_minutes
+    return datetime.fromtimestamp(bucket_minutes * 60, tz=timestamp.tzinfo)
+
+
+def _aggregate_bucket(bucket: Sequence[Bar], bucket_key: datetime) -> Bar:
+    first = bucket[0]
+    last = bucket[-1]
+    return Bar(
+        symbol=first.symbol,
+        timestamp=bucket_key,
+        open=first.open,
+        high=max(bar.high for bar in bucket),
+        low=min(bar.low for bar in bucket),
+        close=last.close,
+        volume=sum(bar.volume for bar in bucket),
     )
