@@ -33,9 +33,10 @@ class SignalEngine:
 
         def add(signal_name: str, entry_value: float, exit_value: float) -> None:
             nonlocal entry_raw, exit_raw
-            weight = float(self.config.weights[signal_name])
-            entry_raw += weight * entry_value
-            exit_raw += weight * exit_value
+            buy_weight = float(self.config.buy_weights[signal_name])
+            sell_weight = float(self.config.sell_weights[signal_name])
+            entry_raw += buy_weight * entry_value
+            exit_raw += sell_weight * exit_value
 
         sma_bias = self._trend_bias(snapshot.sma_fast, snapshot.sma_slow)
         ema_bias = self._trend_bias(snapshot.ema_fast, snapshot.ema_slow)
@@ -58,12 +59,13 @@ class SignalEngine:
         entry_raw += benchmark_entry
         exit_raw += benchmark_exit
 
-        max_weight = sum(float(weight) for weight in self.config.weights.values())
+        buy_max_weight = sum(float(weight) for weight in self.config.buy_weights.values())
+        sell_max_weight = sum(float(weight) for weight in self.config.sell_weights.values())
         # The benchmark term is capped separately in _benchmark_bias, so normalize each side with its own bound.
         benchmark_entry_weight = 0.575
         benchmark_exit_weight = 0.425
-        entry_score = _score_from_signal(entry_raw, max_weight + benchmark_entry_weight)
-        exit_score = _score_from_signal(exit_raw, max_weight + benchmark_exit_weight)
+        entry_score = _score_from_signal(entry_raw, buy_max_weight + benchmark_entry_weight)
+        exit_score = _score_from_signal(exit_raw, sell_max_weight + benchmark_exit_weight)
         action, action_reasons = self.decide_action(entry_score, exit_score, state, snapshot)
         reasons.extend(action_reasons)
 
@@ -202,13 +204,11 @@ class SignalEngine:
         entry_bias = 0.35 * benchmark_trend + 0.45 * relative_strength
         exit_bias = -0.25 * benchmark_trend - 0.35 * relative_strength
 
-        benchmark_label_raw = benchmark.symbol.strip()
-        benchmark_label = benchmark_label_raw.lower() if benchmark_label_raw else "benchmark"
         if benchmark_trend > 0 and relative_strength > 0:
-            return entry_bias, exit_bias, f"{benchmark_label}-aligned"
+            return entry_bias, exit_bias, "market context aligned"
         if benchmark_trend < 0 and relative_strength < 0:
-            return entry_bias, exit_bias, f"{benchmark_label}-pressure"
-        return entry_bias, exit_bias, f"{benchmark_label}-mixed"
+            return entry_bias, exit_bias, "market context under pressure"
+        return entry_bias, exit_bias, "mixed market context"
 
     def _relative_momentum(self, close: float, ema_slow: float | None, sma_slow: float | None) -> float:
         if close <= 0:

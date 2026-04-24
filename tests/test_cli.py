@@ -49,6 +49,7 @@ def test_combine_timeframe_decisions_prefers_weighted_entry_and_missing_timefram
             "1m": make_decision("NVDA", timestamp, 0.82, 0.21, ("1m:trend-aligned",)),
         },
         {"1m": 1.0, "5m": 0.0, "15m": 0.0},
+        {"1m": 1.0, "5m": 0.0, "15m": 0.0},
         engine,
         TradeState.FLAT,
     )
@@ -112,6 +113,7 @@ def test_combine_timeframe_decisions_uses_exit_pressure_for_open_positions() -> 
             "5m": make_decision("TSLA", timestamp, 0.28, 0.38, ("5m:trend-pressure",)),
         },
         {"1m": 1.0, "5m": 0.8, "15m": 0.0},
+        {"1m": 1.0, "5m": 0.8, "15m": 0.0},
         engine,
         TradeState.ACCEPTED_OPEN,
     )
@@ -130,6 +132,7 @@ def test_combine_timeframe_decisions_handles_zero_weights_without_crashing() -> 
         "AAPL",
         {"1m": snapshot},
         {"1m": make_decision("AAPL", timestamp, 0.34, 0.29, ("1m:neutral",))},
+        {"1m": 0.0, "5m": 0.0, "15m": 0.0},
         {"1m": 0.0, "5m": 0.0, "15m": 0.0},
         engine,
         TradeState.FLAT,

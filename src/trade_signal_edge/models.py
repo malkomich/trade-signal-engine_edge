@@ -68,11 +68,22 @@ def default_signal_weights() -> dict[str, float]:
     }
 
 
+def default_timeframe_weights() -> dict[str, float]:
+    return {
+        "1m": 1.0,
+        "5m": 0.75,
+        "15m": 0.5,
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class SignalConfig:
     entry_threshold: float = 0.65
     exit_threshold: float = 0.55
-    weights: Mapping[str, float] = field(default_factory=default_signal_weights)
+    buy_weights: Mapping[str, float] = field(default_factory=default_signal_weights)
+    sell_weights: Mapping[str, float] = field(default_factory=default_signal_weights)
+    buy_timeframe_weights: Mapping[str, float] = field(default_factory=default_timeframe_weights)
+    sell_timeframe_weights: Mapping[str, float] = field(default_factory=default_timeframe_weights)
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,4 +103,3 @@ class TradeWindow:
     opened_at: datetime
     closed_at: Optional[datetime] = None
     status: TradeState = TradeState.FLAT
-

@@ -12,7 +12,7 @@ from .api_client import ApiSessionClient
 from .config import load_runtime_config
 from .indicators import IndicatorCalculator
 from .ingestion import ingest_bars, resample_bars
-from .models import SignalConfig, SignalDecision, TradeState
+from .models import SignalAction, SignalConfig, SignalDecision, TradeState
 from .publisher import HttpDecisionPublisher
 from .providers import (
     ProviderName,
@@ -108,18 +108,40 @@ def _runtime_from_session_config(runtime, payload: object):
     symbols = _parse_symbols(field_map.get("monitored_symbols"), runtime.symbols)
     benchmark_symbol = str(field_map.get("benchmark_symbol") or runtime.benchmark_symbol).strip().upper() or runtime.benchmark_symbol
     session_timezone = str(field_map.get("session_timezone") or runtime.session_timezone).strip() or runtime.session_timezone
-    entry_threshold = _parse_float(field_map.get("entry_score_threshold"), runtime.entry_threshold)
-    exit_threshold = _parse_float(field_map.get("exit_score_threshold"), runtime.exit_threshold)
+    entry_threshold = _parse_float(
+        field_map.get("buy_score_threshold", field_map.get("entry_score_threshold")),
+        runtime.entry_threshold,
+    )
+    exit_threshold = _parse_float(
+        field_map.get("sell_score_threshold", field_map.get("exit_score_threshold")),
+        runtime.exit_threshold,
+    )
 
-    signal_weights = dict(runtime.signal_weights)
+    buy_signal_weights = dict(runtime.buy_signal_weights)
+    sell_signal_weights = dict(runtime.sell_signal_weights)
     for key in SIGNAL_WEIGHT_KEYS:
-        config_key = f"weight_{key}"
-        signal_weights[key] = _parse_float(field_map.get(config_key), signal_weights.get(key, 0.0))
+        shared_weight_key = f"weight_{key}"
+        buy_signal_weights[key] = _parse_float(
+            field_map.get(f"buy_{shared_weight_key}", field_map.get(shared_weight_key)),
+            buy_signal_weights.get(key, 0.0),
+        )
+        sell_signal_weights[key] = _parse_float(
+            field_map.get(f"sell_{shared_weight_key}", field_map.get(shared_weight_key)),
+            sell_signal_weights.get(key, 0.0),
+        )
 
-    timeframe_weights = dict(runtime.timeframe_weights)
+    buy_timeframe_weights = dict(runtime.buy_timeframe_weights)
+    sell_timeframe_weights = dict(runtime.sell_timeframe_weights)
     for key in TIMEFRAME_KEYS:
-        config_key = f"weight_{key}"
-        timeframe_weights[key] = _parse_float(field_map.get(config_key), timeframe_weights.get(key, 0.0))
+        shared_weight_key = f"weight_{key}"
+        buy_timeframe_weights[key] = _parse_float(
+            field_map.get(f"buy_{shared_weight_key}", field_map.get(shared_weight_key)),
+            buy_timeframe_weights.get(key, 0.0),
+        )
+        sell_timeframe_weights[key] = _parse_float(
+            field_map.get(f"sell_{shared_weight_key}", field_map.get(shared_weight_key)),
+            sell_timeframe_weights.get(key, 0.0),
+        )
 
     return replace(
         runtime,
@@ -129,8 +151,10 @@ def _runtime_from_session_config(runtime, payload: object):
         session_timezone=session_timezone,
         entry_threshold=entry_threshold,
         exit_threshold=exit_threshold,
-        signal_weights=signal_weights,
-        timeframe_weights=timeframe_weights,
+        buy_signal_weights=buy_signal_weights,
+        sell_signal_weights=sell_signal_weights,
+        buy_timeframe_weights=buy_timeframe_weights,
+        sell_timeframe_weights=sell_timeframe_weights,
     )
 
 
@@ -216,14 +240,7 @@ def _run_watch_loop(args: argparse.Namespace) -> None:
 def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     calendar = load_session_calendar()
     current_time = datetime.now(tz=timezone.utc)
-    if not calendar.is_open(current_time):
-        report = {
-            "session_active": False,
-            "timestamp": current_time.isoformat(),
-            "timezone": calendar.timezone_name,
-        }
-        print(json.dumps(report, indent=2))
-        return report
+    market_open = calendar.is_open(current_time)
 
     try:
         provider_config = load_provider_config(runtime)
@@ -255,7 +272,10 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         config=SignalConfig(
             entry_threshold=runtime.entry_threshold,
             exit_threshold=runtime.exit_threshold,
-            weights=runtime.signal_weights,
+            buy_weights=runtime.buy_signal_weights,
+            sell_weights=runtime.sell_signal_weights,
+            buy_timeframe_weights=runtime.buy_timeframe_weights,
+            sell_timeframe_weights=runtime.sell_timeframe_weights,
         )
     )
     open_symbols = set()
@@ -267,7 +287,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     benchmark_payload = _load_benchmark_snapshot(provider, indicator_calculator, runtime.benchmark_symbol, bars)
     if benchmark_payload is None:
         report = {
-            "session_active": True,
+            "session_active": market_open,
             "error": f"benchmark {runtime.benchmark_symbol}: no history found",
             "symbol": symbols[0] if symbols else symbol,
             "symbols": symbols,
@@ -335,12 +355,37 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             errors.append(f"{current_symbol}: missing 1m snapshot")
             continue
         state = TradeState.ACCEPTED_OPEN if current_symbol in open_symbols else TradeState.FLAT
+        if not market_open and state is TradeState.FLAT:
+            continue
         timeframe_decisions: dict[str, SignalDecision] = {}
         for timeframe, timeframe_snapshot in snapshots_by_timeframe.items():
             benchmark_for_timeframe = benchmark_snapshots_by_timeframe.get(timeframe, benchmark_snapshot)
             timeframe_decisions[timeframe] = signal_engine.evaluate(timeframe_snapshot, state, benchmark_for_timeframe)
 
-        decision = _combine_timeframe_decisions(current_symbol, snapshots_by_timeframe, timeframe_decisions, runtime.timeframe_weights, signal_engine, state)
+        decision = _combine_timeframe_decisions(
+            current_symbol,
+            snapshots_by_timeframe,
+            timeframe_decisions,
+            runtime.buy_timeframe_weights,
+            runtime.sell_timeframe_weights,
+            signal_engine,
+            state,
+        )
+        if not market_open:
+            if state is TradeState.ACCEPTED_OPEN:
+                if decision.action.value != "SELL_ALERT":
+                    decision = replace(
+                        decision,
+                        action=SignalAction.SELL_ALERT,
+                        reasons=tuple(dict.fromkeys((*decision.reasons, "session-close exit"))),
+                    )
+            else:
+                if decision.action.value == "BUY_ALERT":
+                    decision = replace(
+                        decision,
+                        action=SignalAction.HOLD,
+                        reasons=tuple(dict.fromkeys((*decision.reasons, "market-closed"))),
+                    )
         next_state = state
         if decision.action.value == "BUY_ALERT":
             next_state = StateMachine().transition(TradeState.FLAT, "entry_signal")
@@ -382,7 +427,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
 
     if errors and not decisions:
         report = {
-            "session_active": True,
+            "session_active": market_open,
             "error": "; ".join(errors),
             "errors": errors,
             "symbol": symbol,
@@ -403,7 +448,11 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             "session_id": runtime.session_id,
             "entry_threshold": runtime.entry_threshold,
             "exit_threshold": runtime.exit_threshold,
-            "timeframe_weights": runtime.timeframe_weights,
+            "buy_signal_weights": runtime.buy_signal_weights,
+            "sell_signal_weights": runtime.sell_signal_weights,
+            "buy_timeframe_weights": runtime.buy_timeframe_weights,
+            "sell_timeframe_weights": runtime.sell_timeframe_weights,
+            "market_open": market_open,
         },
         "observability": {
             "log_level": runtime.log_level,
@@ -422,7 +471,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     print(json.dumps(report, default=str, indent=2))
     latest = decisions[-1] if decisions else None
     return {
-        "session_active": True,
+        "session_active": market_open,
         "symbols": symbols,
         "decision_count": len(decisions),
         "symbol": symbols[0] if symbols else symbol,
@@ -460,7 +509,8 @@ def _combine_timeframe_decisions(
     symbol: str,
     snapshots_by_timeframe: dict[str, Any],
     timeframe_decisions: dict[str, SignalDecision],
-    timeframe_weights: dict[str, float],
+    buy_timeframe_weights: dict[str, float],
+    sell_timeframe_weights: dict[str, float],
     signal_engine: SignalEngine,
     state: TradeState,
 ) -> SignalDecision:
@@ -475,12 +525,13 @@ def _combine_timeframe_decisions(
         decision = timeframe_decisions.get(timeframe)
         if decision is None:
             continue
-        weight = timeframe_weights.get(timeframe, 0.0)
-        if weight <= 0:
+        buy_weight = buy_timeframe_weights.get(timeframe, 0.0)
+        sell_weight = sell_timeframe_weights.get(timeframe, 0.0)
+        if buy_weight <= 0 and sell_weight <= 0:
             continue
-        active_weight += weight
-        entry_total += weight * decision.entry_score
-        exit_total += weight * decision.exit_score
+        active_weight += max(buy_weight, sell_weight)
+        entry_total += buy_weight * decision.entry_score
+        exit_total += sell_weight * decision.exit_score
         if decision.reasons:
             reasons.append(f"{timeframe}:{'; '.join(decision.reasons)}")
 
