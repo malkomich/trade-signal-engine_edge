@@ -4,15 +4,15 @@ import argparse
 import json
 import os
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
-from typing import get_args
+from typing import Any, get_args
 
 from .api_client import ApiSessionClient
 from .config import load_runtime_config
 from .indicators import IndicatorCalculator
-from .ingestion import ingest_bars
-from .models import TradeState
+from .ingestion import ingest_bars, resample_bars
+from .models import SignalAction, SignalConfig, SignalDecision, TradeState
 from .publisher import HttpDecisionPublisher
 from .providers import (
     ProviderName,
@@ -32,6 +32,10 @@ class ConfigError(RuntimeError):
     """Raised when the current runtime configuration cannot be used."""
 
 
+TIMEFRAME_KEYS = ("1m", "5m", "15m")
+SIGNAL_WEIGHT_KEYS = ("sma", "ema", "vwap", "rsi", "atr", "dm", "macd", "stochastic")
+
+
 def _parse_int_env(name: str, default: int) -> int:
     raw = os.getenv(name)
     if raw is None:
@@ -45,8 +49,97 @@ def _parse_int_env(name: str, default: int) -> int:
         return default
 
 
+def _parse_float(value: Any, fallback: float) -> float:
+    if value is None:
+        return fallback
+    if isinstance(value, bool):
+        return fallback
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        candidate = value.strip()
+        if not candidate:
+            return fallback
+        try:
+            return float(candidate)
+        except ValueError:
+            return fallback
+    return fallback
+
+
+def _parse_symbols(value: Any, fallback: tuple[str, ...]) -> tuple[str, ...]:
+    if isinstance(value, list):
+        items = [str(item).strip().upper() for item in value]
+    elif isinstance(value, str):
+        items = [item.strip().upper() for item in value.split(",")]
+    else:
+        return fallback
+    symbols = tuple(item for item in items if item)
+    if not symbols:
+        return fallback
+    deduped: list[str] = []
+    for symbol in symbols:
+        if symbol not in deduped:
+            deduped.append(symbol)
+    return tuple(deduped)
+
+
+def _config_fields_map(payload: object) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    selected = payload.get("selected_version")
+    if not isinstance(selected, dict):
+        return {}
+    fields = selected.get("fields")
+    if not isinstance(fields, list):
+        return {}
+    field_map: dict[str, Any] = {}
+    for item in fields:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "").strip()
+        if not key:
+            continue
+        field_map[key] = item.get("value")
+    return field_map
+
+
+def _runtime_from_session_config(runtime, payload: object):
+    field_map = _config_fields_map(payload)
+    if not field_map:
+        return runtime
+
+    symbols = _parse_symbols(field_map.get("monitored_symbols"), runtime.symbols)
+    benchmark_symbol = str(field_map.get("benchmark_symbol") or runtime.benchmark_symbol).strip().upper() or runtime.benchmark_symbol
+    session_timezone = str(field_map.get("session_timezone") or runtime.session_timezone).strip() or runtime.session_timezone
+    entry_threshold = _parse_float(field_map.get("entry_score_threshold"), runtime.entry_threshold)
+    exit_threshold = _parse_float(field_map.get("exit_score_threshold"), runtime.exit_threshold)
+
+    signal_weights = dict(runtime.signal_weights)
+    for key in SIGNAL_WEIGHT_KEYS:
+        config_key = f"weight_{key}"
+        signal_weights[key] = _parse_float(field_map.get(config_key), signal_weights.get(key, 0.0))
+
+    timeframe_weights = dict(runtime.timeframe_weights)
+    for key in TIMEFRAME_KEYS:
+        config_key = f"weight_{key}"
+        timeframe_weights[key] = _parse_float(field_map.get(config_key), timeframe_weights.get(key, 0.0))
+
+    return replace(
+        runtime,
+        symbol=symbols[0] if symbols else runtime.symbol,
+        symbols=symbols,
+        benchmark_symbol=benchmark_symbol,
+        session_timezone=session_timezone,
+        entry_threshold=entry_threshold,
+        exit_threshold=exit_threshold,
+        signal_weights=signal_weights,
+        timeframe_weights=timeframe_weights,
+    )
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run a local sample signal evaluation.")
+    parser = argparse.ArgumentParser(description="Run a local signal evaluation.")
     parser.add_argument("--symbol", default=None)
     parser.add_argument("--bars", type=int, default=None)
     parser.add_argument("--provider", choices=get_args(ProviderName), default=None)
@@ -136,10 +229,6 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         print(json.dumps(report, indent=2))
         return report
 
-    symbol = (args.symbol or runtime.symbol).strip().upper()
-    bars = args.bars or runtime.bars
-    api_base_url = args.api_base_url or runtime.api_base_url
-
     try:
         provider_config = load_provider_config(runtime)
         if args.provider is not None:
@@ -148,14 +237,37 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     except (ValueError, NotImplementedError) as error:
         raise ConfigError(str(error)) from error
 
+    api_base_url = args.api_base_url or runtime.api_base_url
+    session_client = ApiSessionClient(api_base_url) if api_base_url else None
+    errors: list[str] = []
+    session_config = None
+    if session_client is not None:
+        try:
+            session_config = session_client.load_session_config(runtime.session_id)
+        except Exception as error:
+            errors.append(f"session config load failed: {error}")
+    runtime = _runtime_from_session_config(runtime, session_config)
+
+    symbol = (args.symbol or runtime.symbol).strip().upper()
+    bars = args.bars or runtime.bars
     symbols = list(runtime.symbols)
     if args.symbol is not None:
         symbols = [symbol]
 
     indicator_calculator = IndicatorCalculator()
-    signal_engine = SignalEngine()
-    session_client = ApiSessionClient(api_base_url) if api_base_url else None
-    open_symbols = session_client.load_open_symbols(runtime.session_id) if session_client else set()
+    signal_engine = SignalEngine(
+        config=SignalConfig(
+            entry_threshold=runtime.entry_threshold,
+            exit_threshold=runtime.exit_threshold,
+            weights=runtime.signal_weights,
+        )
+    )
+    open_symbols = set()
+    if session_client is not None:
+        try:
+            open_symbols = session_client.load_open_symbols(runtime.session_id)
+        except Exception as error:
+            errors.append(f"open symbols load failed: {error}")
     benchmark_payload = _load_benchmark_snapshot(provider, indicator_calculator, runtime.benchmark_symbol, bars)
     if benchmark_payload is None:
         report = {
@@ -171,10 +283,19 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         print(json.dumps(report, indent=2))
         return report
     benchmark_snapshot, benchmark_series = benchmark_payload
+    benchmark_series_by_timeframe = {
+        "1m": benchmark_series,
+        "5m": resample_bars(benchmark_series, 5),
+        "15m": resample_bars(benchmark_series, 15),
+    }
+    benchmark_snapshots_by_timeframe = {
+        timeframe: indicator_calculator.compute(series)
+        for timeframe, series in benchmark_series_by_timeframe.items()
+        if series
+    }
     publisher = HttpDecisionPublisher(api_base_url, runtime.session_id) if api_base_url else None
 
     decisions: list[dict[str, object]] = []
-    errors: list[str] = []
     try:
         benchmark_market_payload = _build_market_snapshot_payload(
             session_id=runtime.session_id,
@@ -203,9 +324,27 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             continue
 
         bars_series = ingest_bars(history)
-        snapshot = indicator_calculator.compute(bars_series)
+        timeframe_series = {
+            "1m": bars_series,
+            "5m": resample_bars(bars_series, 5),
+            "15m": resample_bars(bars_series, 15),
+        }
+        snapshots_by_timeframe = {
+            timeframe: indicator_calculator.compute(series)
+            for timeframe, series in timeframe_series.items()
+            if series
+        }
+        snapshot = snapshots_by_timeframe.get("1m")
+        if snapshot is None:
+            errors.append(f"{current_symbol}: missing 1m snapshot")
+            continue
         state = TradeState.ACCEPTED_OPEN if current_symbol in open_symbols else TradeState.FLAT
-        decision = signal_engine.evaluate(snapshot, state, benchmark_snapshot)
+        timeframe_decisions: dict[str, SignalDecision] = {}
+        for timeframe, timeframe_snapshot in snapshots_by_timeframe.items():
+            benchmark_for_timeframe = benchmark_snapshots_by_timeframe.get(timeframe, benchmark_snapshot)
+            timeframe_decisions[timeframe] = signal_engine.evaluate(timeframe_snapshot, state, benchmark_for_timeframe)
+
+        decision = _combine_timeframe_decisions(current_symbol, snapshots_by_timeframe, timeframe_decisions, runtime.timeframe_weights, signal_engine, state)
         next_state = state
         if decision.action.value == "BUY_ALERT":
             next_state = StateMachine().transition(TradeState.FLAT, "entry_signal")
@@ -241,6 +380,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
                 "snapshot": asdict(snapshot),
                 "decision": asdict(decision),
                 "next_state": next_state.value,
+                "timeframes": {timeframe: asdict(item) for timeframe, item in timeframe_decisions.items()},
             }
         )
 
@@ -265,6 +405,9 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             "api_base_url": api_base_url,
             "provider": provider_config.name,
             "session_id": runtime.session_id,
+            "entry_threshold": runtime.entry_threshold,
+            "exit_threshold": runtime.exit_threshold,
+            "timeframe_weights": runtime.timeframe_weights,
         },
         "observability": {
             "log_level": runtime.log_level,
@@ -315,6 +458,74 @@ def _load_benchmark_snapshot(provider, indicator_calculator: IndicatorCalculator
         return None
     bars_series = ingest_bars(history)
     return indicator_calculator.compute(bars_series), bars_series
+
+
+def _combine_timeframe_decisions(
+    symbol: str,
+    snapshots_by_timeframe: dict[str, Any],
+    timeframe_decisions: dict[str, SignalDecision],
+    timeframe_weights: dict[str, float],
+    signal_engine: SignalEngine,
+    state: TradeState,
+) -> SignalDecision:
+    entry_total = 0.0
+    exit_total = 0.0
+    active_weight = 0.0
+    reasons: list[str] = []
+    primary_snapshot = snapshots_by_timeframe.get("1m")
+    primary_decision = timeframe_decisions.get("1m")
+
+    for timeframe in TIMEFRAME_KEYS:
+        decision = timeframe_decisions.get(timeframe)
+        if decision is None:
+            continue
+        weight = timeframe_weights.get(timeframe, 0.0)
+        if weight <= 0:
+            continue
+        active_weight += weight
+        entry_total += weight * decision.entry_score
+        exit_total += weight * decision.exit_score
+        if decision.reasons:
+            reasons.append(f"{timeframe}:{'; '.join(decision.reasons)}")
+
+    if active_weight <= 0:
+        active_weight = 1.0
+
+    entry_score = entry_total / active_weight
+    exit_score = exit_total / active_weight
+
+    strong_exit_pressure = False
+    if primary_snapshot is not None:
+        strong_exit_pressure = signal_engine._strong_exit_pressure(primary_snapshot)
+
+    if state is TradeState.ACCEPTED_OPEN and (exit_score >= signal_engine.config.exit_threshold or strong_exit_pressure):
+        action = SignalAction.SELL_ALERT
+        if strong_exit_pressure:
+            reasons.append("exit-pressure")
+        reasons.append("exit-qualified")
+    elif state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= signal_engine.config.entry_threshold:
+        action = SignalAction.BUY_ALERT
+        reasons.append("entry-qualified")
+    else:
+        action = SignalAction.HOLD
+
+    if primary_decision is not None and primary_decision.reasons:
+        reasons.extend(primary_decision.reasons)
+
+    deduped_reasons: list[str] = []
+    for reason in reasons:
+        if reason and reason not in deduped_reasons:
+            deduped_reasons.append(reason)
+
+    timestamp = primary_snapshot.timestamp if primary_snapshot is not None else datetime.now(tz=timezone.utc)
+    return SignalDecision(
+        symbol=symbol,
+        timestamp=timestamp,
+        entry_score=round(entry_score, 4),
+        exit_score=round(exit_score, 4),
+        action=action,
+        reasons=tuple(deduped_reasons),
+    )
 
 
 def _build_market_snapshot_payload(

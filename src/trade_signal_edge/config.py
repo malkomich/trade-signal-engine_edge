@@ -1,19 +1,45 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 from pathlib import Path
+
+
+def default_signal_weights() -> dict[str, float]:
+    return {
+        "sma": 1.6,
+        "ema": 1.4,
+        "vwap": 1.1,
+        "rsi": 1.0,
+        "atr": 0.7,
+        "dm": 0.8,
+        "macd": 1.2,
+        "stochastic": 0.8,
+    }
+
+
+def default_timeframe_weights() -> dict[str, float]:
+    return {
+        "1m": 1.0,
+        "5m": 0.75,
+        "15m": 0.5,
+    }
 
 
 @dataclass(slots=True)
 class RuntimeConfig:
     symbol: str = "AAPL"
     symbols: tuple[str, ...] = ("AAPL", "AMZN", "GOOGL", "META", "MSFT", "NVDA", "PLTR", "TSLA")
-    benchmark_symbol: str = "IXIC"
+    benchmark_symbol: str = "QQQ"
     session_id: str = "nasdaq-live"
     bars: int = 60
     provider: str = "synthetic"
     api_base_url: str | None = None
+    session_timezone: str = "America/New_York"
+    entry_threshold: float = 0.65
+    exit_threshold: float = 0.55
+    signal_weights: dict[str, float] = field(default_factory=default_signal_weights)
+    timeframe_weights: dict[str, float] = field(default_factory=default_timeframe_weights)
     alpaca_feed: str = "iex"
     alpaca_api_key_id: str | None = None
     alpaca_api_secret_key: str | None = None

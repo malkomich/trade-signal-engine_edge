@@ -64,6 +64,15 @@ def test_load_open_symbols_returns_empty_set_without_base_url() -> None:
     assert ApiSessionClient("").load_open_symbols("session-1") == set()
 
 
+def test_load_session_config_returns_none_for_missing_session() -> None:
+    http_error = HTTPError("https://api.example.com", 404, "not found", hdrs=None, fp=None)
+
+    with patch("trade_signal_edge.api_client.request.urlopen", side_effect=http_error):
+        client = ApiSessionClient("https://api.example.com")
+
+        assert client.load_session_config("session-1") is None
+
+
 def test_load_open_symbols_url_encodes_session_id() -> None:
     captured = {}
 
@@ -85,6 +94,30 @@ def test_load_open_symbols_url_encodes_session_id() -> None:
 
     assert captured["method"] == "GET"
     assert captured["url"] == "https://api.example.com/v1/sessions/session%2Fwith%20spaces%3Fand%23chars/windows"
+
+
+def test_load_session_config_url_encodes_session_id() -> None:
+    captured = {}
+
+    def fake_request(url: str, method: str = "GET", **kwargs):
+        captured["url"] = url
+        captured["method"] = method
+        return Mock()
+
+    response = Mock()
+    response.__enter__ = Mock(return_value=response)
+    response.__exit__ = Mock(return_value=None)
+    response.read = Mock(return_value=b'{"session_id":"session-1","versions":[]}')
+
+    with patch("trade_signal_edge.api_client.request.Request", side_effect=fake_request), patch(
+        "trade_signal_edge.api_client.request.urlopen",
+        return_value=response,
+    ):
+        payload = ApiSessionClient("https://api.example.com").load_session_config("session/with spaces?and#chars")
+
+    assert captured["method"] == "GET"
+    assert captured["url"] == "https://api.example.com/v1/sessions/session%2Fwith%20spaces%3Fand%23chars/config"
+    assert payload == {"session_id": "session-1", "versions": []}
 
 
 def test_clean_symbol_handles_null_and_non_string_values() -> None:
