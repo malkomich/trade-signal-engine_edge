@@ -204,11 +204,12 @@ class SignalEngine:
         entry_bias = 0.35 * benchmark_trend + 0.45 * relative_strength
         exit_bias = -0.25 * benchmark_trend - 0.35 * relative_strength
 
+        benchmark_label = benchmark.symbol.strip().upper() if benchmark.symbol.strip() else "BENCHMARK"
         if benchmark_trend > 0 and relative_strength > 0:
-            return entry_bias, exit_bias, "market context aligned"
+            return entry_bias, exit_bias, f"{benchmark_label} market context aligned"
         if benchmark_trend < 0 and relative_strength < 0:
-            return entry_bias, exit_bias, "market context under pressure"
-        return entry_bias, exit_bias, "mixed market context"
+            return entry_bias, exit_bias, f"{benchmark_label} market context under pressure"
+        return entry_bias, exit_bias, f"{benchmark_label} mixed market context"
 
     def _relative_momentum(self, close: float, ema_slow: float | None, sma_slow: float | None) -> float:
         if close <= 0:

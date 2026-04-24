@@ -379,13 +379,6 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
                         action=SignalAction.SELL_ALERT,
                         reasons=tuple(dict.fromkeys((*decision.reasons, "session-close exit"))),
                     )
-            else:
-                if decision.action.value == "BUY_ALERT":
-                    decision = replace(
-                        decision,
-                        action=SignalAction.HOLD,
-                        reasons=tuple(dict.fromkeys((*decision.reasons, "market-closed"))),
-                    )
         next_state = state
         if decision.action.value == "BUY_ALERT":
             next_state = StateMachine().transition(TradeState.FLAT, "entry_signal")
@@ -516,7 +509,8 @@ def _combine_timeframe_decisions(
 ) -> SignalDecision:
     entry_total = 0.0
     exit_total = 0.0
-    active_weight = 0.0
+    buy_weight_sum = 0.0
+    sell_weight_sum = 0.0
     reasons: list[str] = []
     primary_snapshot = snapshots_by_timeframe.get("1m")
     primary_decision = timeframe_decisions.get("1m")
@@ -529,17 +523,15 @@ def _combine_timeframe_decisions(
         sell_weight = sell_timeframe_weights.get(timeframe, 0.0)
         if buy_weight <= 0 and sell_weight <= 0:
             continue
-        active_weight += max(buy_weight, sell_weight)
+        buy_weight_sum += buy_weight
+        sell_weight_sum += sell_weight
         entry_total += buy_weight * decision.entry_score
         exit_total += sell_weight * decision.exit_score
         if decision.reasons:
             reasons.append(f"{timeframe}:{'; '.join(decision.reasons)}")
 
-    if active_weight <= 0:
-        active_weight = 1.0
-
-    entry_score = entry_total / active_weight
-    exit_score = exit_total / active_weight
+    entry_score = entry_total / buy_weight_sum if buy_weight_sum > 0 else 0.0
+    exit_score = exit_total / sell_weight_sum if sell_weight_sum > 0 else 0.0
 
     strong_exit_pressure = any(
         signal_engine.is_strong_exit_pressure(snapshot)

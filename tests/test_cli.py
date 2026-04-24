@@ -61,6 +61,47 @@ def test_combine_timeframe_decisions_prefers_weighted_entry_and_missing_timefram
     assert "entry-qualified" in decision.reasons
 
 
+def test_combine_timeframe_decisions_normalizes_buy_and_sell_independently() -> None:
+    timestamp = datetime(2026, 4, 24, 13, 30, tzinfo=timezone.utc)
+    snapshot = IndicatorSnapshot(
+        symbol="AAPL",
+        timestamp=timestamp,
+        close=190.0,
+        sma_fast=189.0,
+        sma_slow=188.5,
+        ema_fast=189.4,
+        ema_slow=188.7,
+        vwap=188.9,
+        rsi=60.0,
+        atr=1.2,
+        plus_di=24.0,
+        minus_di=17.0,
+        adx=22.0,
+        macd=0.7,
+        macd_signal=0.5,
+        macd_histogram=0.2,
+        stochastic_k=42.0,
+        stochastic_d=38.0,
+    )
+    engine = SignalEngine(SignalConfig(entry_threshold=0.65, exit_threshold=0.55))
+
+    decision = _combine_timeframe_decisions(
+        "AAPL",
+        {"1m": snapshot},
+        {
+            "1m": make_decision("AAPL", timestamp, 0.82, 0.21, ("1m:trend-aligned",)),
+        },
+        {"1m": 0.5, "5m": 0.0, "15m": 0.0},
+        {"1m": 1.0, "5m": 0.0, "15m": 0.0},
+        engine,
+        TradeState.FLAT,
+    )
+
+    assert decision.entry_score == 0.82
+    assert decision.exit_score == 0.21
+    assert decision.action is SignalAction.BUY_ALERT
+
+
 def test_combine_timeframe_decisions_uses_exit_pressure_for_open_positions() -> None:
     timestamp = datetime(2026, 4, 24, 13, 30, tzinfo=timezone.utc)
     primary_snapshot = IndicatorSnapshot(
