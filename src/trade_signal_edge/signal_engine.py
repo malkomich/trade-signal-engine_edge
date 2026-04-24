@@ -47,6 +47,7 @@ class SignalEngine:
         macd_entry, macd_exit = self._macd_bias(snapshot.macd, snapshot.macd_signal, snapshot.macd_histogram)
         stochastic_entry, stochastic_exit = self._stochastic_bias(snapshot.stochastic_k, snapshot.stochastic_d)
         benchmark_entry, benchmark_exit, benchmark_reason = self._benchmark_bias(snapshot, benchmark)
+        profile_entry, profile_exit, profile_reason = self._optimization_bias(snapshot)
 
         add("sma", sma_bias, -sma_bias)
         add("ema", ema_bias, -ema_bias)
@@ -58,6 +59,8 @@ class SignalEngine:
         add("stochastic", stochastic_entry, stochastic_exit)
         entry_raw += benchmark_entry
         exit_raw += benchmark_exit
+        entry_raw += profile_entry
+        exit_raw += profile_exit
 
         buy_max_weight = sum(float(weight) for weight in self.config.buy_weights.values())
         sell_max_weight = sum(float(weight) for weight in self.config.sell_weights.values())
@@ -71,6 +74,8 @@ class SignalEngine:
 
         if benchmark_reason is not None:
             reasons.append(benchmark_reason)
+        if profile_reason is not None:
+            reasons.append(profile_reason)
 
         return SignalDecision(
             symbol=snapshot.symbol,
@@ -219,3 +224,67 @@ class SignalEngine:
         if sma_slow is not None and sma_slow > 0:
             return (close / sma_slow) - 1.0
         return 0.0
+
+    def _optimization_bias(self, snapshot: IndicatorSnapshot) -> tuple[float, float, str | None]:
+        entry_profile = dict(self.config.entry_profile)
+        exit_profile = dict(self.config.exit_profile)
+        if not entry_profile and not exit_profile:
+            return 0.0, 0.0, None
+
+        current = self._snapshot_profile(snapshot)
+        entry_distance = self._profile_distance(current, entry_profile)
+        exit_distance = self._profile_distance(current, exit_profile)
+        if entry_distance is None and exit_distance is None:
+            return 0.0, 0.0, None
+        if entry_distance is None:
+            exit_similarity = 1.0 / (1.0 + exit_distance)
+            bias = -min(self.config.optimizer_bias_cap, self.config.optimizer_learning_rate * exit_similarity)
+            return bias, -bias, "optimizer profile favors exit"
+        if exit_distance is None:
+            entry_similarity = 1.0 / (1.0 + entry_distance)
+            bias = min(self.config.optimizer_bias_cap, self.config.optimizer_learning_rate * entry_similarity)
+            return bias, -bias, "optimizer profile favors entry"
+
+        bias = (exit_distance - entry_distance) * self.config.optimizer_learning_rate
+        bias = max(-self.config.optimizer_bias_cap, min(self.config.optimizer_bias_cap, bias))
+        if abs(bias) < 1e-6:
+            return 0.0, 0.0, "optimizer profile balanced"
+        if bias > 0:
+            return bias, -bias, "optimizer profile favors entry"
+        return bias, -bias, "optimizer profile favors exit"
+
+    def _profile_distance(self, current: dict[str, float], profile: dict[str, float]) -> float | None:
+        total = 0.0
+        count = 0
+        for key, target in profile.items():
+            if not isfinite(target):
+                continue
+            value = current.get(key)
+            if value is None or not isfinite(value):
+                continue
+            scale = max(abs(target), 1.0)
+            total += abs(value - target) / scale
+            count += 1
+        if count == 0:
+            return None
+        return total / count
+
+    def _snapshot_profile(self, snapshot: IndicatorSnapshot) -> dict[str, float | None]:
+        return {
+            "close": snapshot.close,
+            "sma_fast": snapshot.sma_fast,
+            "sma_slow": snapshot.sma_slow,
+            "ema_fast": snapshot.ema_fast,
+            "ema_slow": snapshot.ema_slow,
+            "vwap": snapshot.vwap,
+            "rsi": snapshot.rsi,
+            "atr": snapshot.atr,
+            "plus_di": snapshot.plus_di,
+            "minus_di": snapshot.minus_di,
+            "adx": snapshot.adx,
+            "macd": snapshot.macd,
+            "macd_signal": snapshot.macd_signal,
+            "macd_histogram": snapshot.macd_histogram,
+            "stochastic_k": snapshot.stochastic_k,
+            "stochastic_d": snapshot.stochastic_d,
+        }

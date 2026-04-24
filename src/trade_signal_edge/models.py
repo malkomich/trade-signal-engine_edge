@@ -84,6 +84,10 @@ class SignalConfig:
     sell_weights: Mapping[str, float] = field(default_factory=default_signal_weights)
     buy_timeframe_weights: Mapping[str, float] = field(default_factory=default_timeframe_weights)
     sell_timeframe_weights: Mapping[str, float] = field(default_factory=default_timeframe_weights)
+    entry_profile: Mapping[str, float] = field(default_factory=dict)
+    exit_profile: Mapping[str, float] = field(default_factory=dict)
+    optimizer_learning_rate: float = 0.12
+    optimizer_bias_cap: float = 0.08
 
 
 @dataclass(frozen=True, slots=True)

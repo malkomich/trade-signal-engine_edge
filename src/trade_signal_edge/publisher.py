@@ -9,7 +9,7 @@ from .models import SignalAction, SignalDecision
 
 
 class DecisionPublisher(Protocol):
-    def publish(self, decision: SignalDecision) -> None:
+    def publish(self, decision: SignalDecision) -> dict[str, object] | None:
         raise NotImplementedError
 
 
@@ -19,10 +19,10 @@ class HttpDecisionPublisher:
     session_id: str
     timeout_seconds: int = 10
 
-    def publish(self, decision: SignalDecision) -> None:
+    def publish(self, decision: SignalDecision) -> dict[str, object] | None:
         action = self._resolve_action(decision.action)
         if action is None:
-            return
+            return None
         payload = {
             "symbol": decision.symbol,
             "reason": "; ".join(decision.reasons) if decision.reasons else "signal-evaluated",
@@ -40,11 +40,18 @@ class HttpDecisionPublisher:
         )
         try:
             with request.urlopen(req, timeout=self.timeout_seconds) as response:
-                response.read()
+                raw = response.read()
         except error.HTTPError as exc:
             raise RuntimeError(f"decision publish failed with status {exc.code}") from exc
         except error.URLError as exc:
             raise RuntimeError("decision publish failed") from exc
+        if not raw:
+            return None
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError:
+            return None
+        return payload if isinstance(payload, dict) else None
 
     def _resolve_action(self, action: SignalAction) -> str | None:
         if action is SignalAction.BUY_ALERT:

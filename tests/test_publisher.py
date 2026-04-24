@@ -20,7 +20,7 @@ def test_http_decision_publisher_url_encodes_session_id() -> None:
     response = Mock()
     response.__enter__ = Mock(return_value=response)
     response.__exit__ = Mock(return_value=None)
-    response.read = Mock(return_value=b"")
+    response.read = Mock(return_value=b'{"window_id":"session:NVDA:decision-1"}')
 
     decision = SignalDecision(
         symbol="NVDA",
@@ -35,8 +35,8 @@ def test_http_decision_publisher_url_encodes_session_id() -> None:
         "trade_signal_edge.publisher.request.urlopen",
         return_value=response,
     ):
-        HttpDecisionPublisher("https://api.example.com", "session/with spaces?and#chars").publish(decision)
+        result = HttpDecisionPublisher("https://api.example.com", "session/with spaces?and#chars").publish(decision)
 
     assert captured["method"] == "POST"
     assert captured["url"] == "https://api.example.com/v1/sessions/session%2Fwith%20spaces%3Fand%23chars/accept"
-
+    assert result == {"window_id": "session:NVDA:decision-1"}
