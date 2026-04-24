@@ -138,6 +138,7 @@ def _runtime_from_session_config(runtime, payload: object):
         field_map.get("sell_score_threshold", field_map.get("exit_score_threshold")),
         runtime.exit_threshold,
     )
+    entry_exit_margin = _parse_float(field_map.get("entry_exit_margin"), runtime.entry_exit_margin)
 
     buy_signal_weights = dict(runtime.buy_signal_weights)
     sell_signal_weights = dict(runtime.sell_signal_weights)
@@ -179,6 +180,7 @@ def _runtime_from_session_config(runtime, payload: object):
         session_timezone=session_timezone,
         entry_threshold=entry_threshold,
         exit_threshold=exit_threshold,
+        entry_exit_margin=entry_exit_margin,
         buy_signal_weights=buy_signal_weights,
         sell_signal_weights=sell_signal_weights,
         buy_timeframe_weights=buy_timeframe_weights,

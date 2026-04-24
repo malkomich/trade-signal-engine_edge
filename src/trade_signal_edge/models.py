@@ -80,6 +80,7 @@ def default_timeframe_weights() -> dict[str, float]:
 class SignalConfig:
     entry_threshold: float = 0.65
     exit_threshold: float = 0.55
+    entry_exit_margin: float = 0.05
     buy_weights: Mapping[str, float] = field(default_factory=default_signal_weights)
     sell_weights: Mapping[str, float] = field(default_factory=default_signal_weights)
     buy_timeframe_weights: Mapping[str, float] = field(default_factory=default_timeframe_weights)

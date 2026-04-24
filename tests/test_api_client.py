@@ -36,6 +36,15 @@ def test_load_open_symbols_wraps_http_error() -> None:
             raise AssertionError("RuntimeError was not raised")
 
 
+def test_load_open_symbols_returns_empty_set_for_missing_session() -> None:
+    http_error = HTTPError("https://api.example.com", 404, "not found", hdrs=None, fp=None)
+
+    with patch("trade_signal_edge.api_client.request.urlopen", side_effect=http_error):
+        client = ApiSessionClient("https://api.example.com")
+
+        assert client.load_open_symbols("session-1") == set()
+
+
 def test_load_open_symbols_wraps_url_error() -> None:
     with patch("trade_signal_edge.api_client.request.urlopen", side_effect=URLError("offline")):
         client = ApiSessionClient("https://api.example.com")

@@ -42,6 +42,8 @@ class ApiSessionClient:
             with request.urlopen(req, timeout=self.timeout_seconds) as response:
                 payload = loads(response.read().decode("utf-8"))
         except error.HTTPError as exc:
+            if exc.code == 404:
+                return {}
             raise RuntimeError(f"failed to load open windows: {exc.code}") from exc
         except error.URLError as exc:
             raise RuntimeError("failed to load open windows") from exc

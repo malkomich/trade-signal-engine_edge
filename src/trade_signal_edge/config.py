@@ -38,6 +38,7 @@ class RuntimeConfig:
     session_timezone: str = "America/New_York"
     entry_threshold: float = 0.65
     exit_threshold: float = 0.55
+    entry_exit_margin: float = 0.05
     buy_signal_weights: dict[str, float] = field(default_factory=default_signal_weights)
     sell_signal_weights: dict[str, float] = field(default_factory=default_signal_weights)
     buy_timeframe_weights: dict[str, float] = field(default_factory=default_timeframe_weights)
