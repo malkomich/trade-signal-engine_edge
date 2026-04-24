@@ -275,19 +275,6 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     calendar = load_session_calendar()
     current_time = datetime.now(tz=timezone.utc)
     market_open = calendar.is_open(current_time)
-    if not market_open:
-        report = {
-            "session_active": False,
-            "symbol": runtime.symbol,
-            "symbols": list(runtime.symbols),
-            "provider": runtime.provider,
-            "action": None,
-            "next_state": None,
-            "decision_count": 0,
-            "timestamp": current_time.isoformat(),
-        }
-        print(json.dumps(report, indent=2))
-        return report
 
     try:
         provider_config = load_provider_config(runtime)
