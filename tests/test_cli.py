@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
-from trade_signal_edge.cli import _combine_timeframe_decisions, _resolve_window_id_after_publish
-from trade_signal_edge.models import IndicatorSnapshot, SignalAction, SignalDecision, SignalConfig, TradeState
+from trade_signal_edge.cli import _build_market_snapshot_payload, _combine_timeframe_decisions, _resolve_window_id_after_publish
+from trade_signal_edge.models import Bar, IndicatorSnapshot, SignalAction, SignalDecision, SignalConfig, TradeState
 from trade_signal_edge.signal_engine import SignalEngine
 
 
@@ -201,3 +201,28 @@ def test_resolve_window_id_after_publish_falls_back_to_open_windows_when_respons
 
     assert resolved == "session:NVDA:decision-1"
     session_client.load_open_windows.assert_called_once_with("session-1")
+
+
+def test_build_market_snapshot_payload_omits_hold_signal_action() -> None:
+    timestamp = datetime(2026, 4, 24, 13, 30, tzinfo=timezone.utc)
+    snapshot = IndicatorSnapshot(
+        symbol="AAPL",
+        timestamp=timestamp,
+        close=190.0,
+    )
+    bar = Bar(symbol="AAPL", timestamp=timestamp, open=189.5, high=190.5, low=189.2, close=190.0, volume=1_000.0)
+    payload = _build_market_snapshot_payload(
+        session_id="session-1",
+        symbol="AAPL",
+        bars_series=[bar],
+        snapshot=snapshot,
+        entry_score=0.42,
+        exit_score=0.31,
+        decision_action="HOLD",
+        next_state="FLAT",
+        benchmark_symbol="QQQ",
+        regime="live market session",
+        window_id="",
+    )
+
+    assert payload["signal_action"] is None
