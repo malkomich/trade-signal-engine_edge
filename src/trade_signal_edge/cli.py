@@ -652,7 +652,7 @@ def _build_market_snapshot_payload(
         "entry_score": entry_score,
         "exit_score": exit_score,
         "event_type": "market.snapshot",
-        "signal_action": decision_action or "",
+        "signal_action": None if decision_action in (None, "HOLD") else decision_action,
         "signal_state": next_state,
         "signal_regime": regime,
         "benchmark_symbol": benchmark_symbol,
