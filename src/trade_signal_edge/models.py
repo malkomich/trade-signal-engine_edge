@@ -57,14 +57,14 @@ class IndicatorSnapshot:
 
 def default_signal_weights() -> dict[str, float]:
     return {
-        "sma": 1.6,
-        "ema": 1.4,
-        "vwap": 1.1,
-        "rsi": 1.0,
-        "atr": 0.7,
-        "dm": 0.8,
-        "macd": 1.2,
-        "stochastic": 0.8,
+        "sma": 1.7,
+        "ema": 1.7,
+        "vwap": 1.0,
+        "rsi": 0.8,
+        "atr": 0.5,
+        "dm": 1.1,
+        "macd": 1.4,
+        "stochastic": 0.6,
     }
 
 
