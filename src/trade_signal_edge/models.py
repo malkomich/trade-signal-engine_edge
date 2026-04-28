@@ -53,18 +53,28 @@ class IndicatorSnapshot:
     macd_histogram: Optional[float] = None
     stochastic_k: Optional[float] = None
     stochastic_d: Optional[float] = None
+    bollinger_middle: Optional[float] = None
+    bollinger_upper: Optional[float] = None
+    bollinger_lower: Optional[float] = None
+    obv: Optional[float] = None
+    relative_volume: Optional[float] = None
+    volume_profile: Optional[float] = None
 
 
 def default_signal_weights() -> dict[str, float]:
     return {
-        "sma": 1.7,
-        "ema": 1.7,
-        "vwap": 1.0,
-        "rsi": 0.8,
-        "atr": 0.5,
-        "dm": 1.1,
-        "macd": 1.4,
-        "stochastic": 0.6,
+        "sma": 0.8,
+        "ema": 1.0,
+        "vwap": 1.2,
+        "bollinger": 0.9,
+        "rsi": 0.9,
+        "atr": 0.4,
+        "dm": 0.5,
+        "macd": 1.0,
+        "stochastic": 0.5,
+        "obv": 0.8,
+        "relative_volume": 1.1,
+        "volume_profile": 0.7,
     }
 
 
@@ -78,9 +88,9 @@ def default_timeframe_weights() -> dict[str, float]:
 
 @dataclass(frozen=True, slots=True)
 class SignalConfig:
-    entry_threshold: float = 0.65
-    exit_threshold: float = 0.55
-    entry_exit_margin: float = 0.05
+    entry_threshold: float = 0.7
+    exit_threshold: float = 0.6
+    entry_exit_margin: float = 0.1
     buy_weights: Mapping[str, float] = field(default_factory=default_signal_weights)
     sell_weights: Mapping[str, float] = field(default_factory=default_signal_weights)
     buy_timeframe_weights: Mapping[str, float] = field(default_factory=default_timeframe_weights)

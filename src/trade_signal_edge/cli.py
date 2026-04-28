@@ -33,7 +33,20 @@ class ConfigError(RuntimeError):
 
 
 TIMEFRAME_KEYS = ("1m", "5m", "15m")
-SIGNAL_WEIGHT_KEYS = ("sma", "ema", "vwap", "rsi", "atr", "dm", "macd", "stochastic")
+SIGNAL_WEIGHT_KEYS = (
+    "sma",
+    "ema",
+    "vwap",
+    "bollinger",
+    "rsi",
+    "atr",
+    "dm",
+    "macd",
+    "stochastic",
+    "obv",
+    "relative_volume",
+    "volume_profile",
+)
 
 
 def _parse_int_env(name: str, default: int) -> int:
@@ -625,6 +638,7 @@ def _build_market_snapshot_payload(
     window_id: str,
 ) -> dict[str, object]:
     latest_bar = bars_series[-1]
+    # This payload is part of the RTDB contract consumed by admin and analytics.
     payload = {
         "session_id": session_id,
         "window_id": window_id,
@@ -652,6 +666,12 @@ def _build_market_snapshot_payload(
         "macd_histogram": snapshot.macd_histogram,
         "stochastic_k": snapshot.stochastic_k,
         "stochastic_d": snapshot.stochastic_d,
+        "bollinger_middle": snapshot.bollinger_middle,
+        "bollinger_upper": snapshot.bollinger_upper,
+        "bollinger_lower": snapshot.bollinger_lower,
+        "obv": snapshot.obv,
+        "relative_volume": snapshot.relative_volume,
+        "volume_profile": snapshot.volume_profile,
         "entry_score": entry_score,
         "exit_score": exit_score,
         "event_type": "market.snapshot",

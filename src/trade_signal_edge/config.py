@@ -17,9 +17,9 @@ class RuntimeConfig:
     provider: str = "synthetic"
     api_base_url: str | None = None
     session_timezone: str = "America/New_York"
-    entry_threshold: float = 0.65
-    exit_threshold: float = 0.55
-    entry_exit_margin: float = 0.05
+    entry_threshold: float = 0.7
+    exit_threshold: float = 0.6
+    entry_exit_margin: float = 0.1
     buy_signal_weights: dict[str, float] = field(default_factory=default_signal_weights)
     sell_signal_weights: dict[str, float] = field(default_factory=default_signal_weights)
     buy_timeframe_weights: dict[str, float] = field(default_factory=default_timeframe_weights)

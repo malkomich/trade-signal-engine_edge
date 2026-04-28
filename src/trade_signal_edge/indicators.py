@@ -32,6 +32,10 @@ class IndicatorCalculator:
     stochastic_period: int = 14
     stochastic_signal_period: int = 3
     macd_signal_period: int = 9
+    bollinger_period: int = 20
+    bollinger_stddev: float = 2.0
+    volume_profile_period: int = 20
+    volume_profile_bins: int = 8
 
     def compute(self, bars: Sequence[Bar]) -> IndicatorSnapshot:
         if not bars:
@@ -63,8 +67,44 @@ class IndicatorCalculator:
         ema_fast = close.ewm(span=self.fast_ema, adjust=False).mean()
         ema_slow = close.ewm(span=self.slow_ema, adjust=False).mean()
 
+        bollinger_middle = close.rolling(self.bollinger_period).mean()
+        bollinger_std = close.rolling(self.bollinger_period).std(ddof=1)
+        bollinger_upper = bollinger_middle + (self.bollinger_stddev * bollinger_std)
+        bollinger_lower = bollinger_middle - (self.bollinger_stddev * bollinger_std)
+
         typical_price = (high + low + close) / 3.0
         cumulative_vwap = (typical_price * volume).cumsum() / volume.cumsum()
+
+        obv = pd.Series(0.0, index=frame.index)
+        close_delta = close.diff().fillna(0)
+        obv_direction = np.sign(close_delta)
+        obv = (obv_direction * volume).cumsum()
+
+        volume_average = volume.rolling(self.bollinger_period).mean()
+        relative_volume = volume / volume_average.replace(0, np.nan)
+        relative_volume = relative_volume.replace([np.inf, -np.inf], np.nan)
+
+        volume_profile = pd.Series(np.nan, index=frame.index)
+        profile_window = self.volume_profile_period
+        if profile_window <= 0:
+            profile_window = 1
+        window = frame.iloc[max(0, len(frame) - profile_window) : len(frame)]
+        if not window.empty:
+            price_low = float(window["low"].min())
+            price_high = float(window["high"].max())
+            if np.isfinite(price_low) and np.isfinite(price_high) and price_high > price_low:
+                histogram, bin_edges = np.histogram(
+                    window["close"].astype(float),
+                    bins=max(2, self.volume_profile_bins),
+                    range=(price_low, price_high),
+                    weights=window["volume"].astype(float),
+                )
+                total_volume = float(histogram.sum())
+                if total_volume > 0:
+                    last_close = float(window["close"].iloc[-1])
+                    bin_index = np.searchsorted(bin_edges, last_close, side="right") - 1
+                    bin_index = int(np.clip(bin_index, 0, len(histogram) - 1))
+                    volume_profile.iloc[-1] = histogram[bin_index] / total_volume
 
         delta = close.diff()
         gain = delta.clip(lower=0)
@@ -130,4 +170,10 @@ class IndicatorCalculator:
             macd_histogram=_last_value(macd_histogram),
             stochastic_k=_last_value(stochastic_k),
             stochastic_d=_last_value(stochastic_d),
+            bollinger_middle=_last_value(bollinger_middle),
+            bollinger_upper=_last_value(bollinger_upper),
+            bollinger_lower=_last_value(bollinger_lower),
+            obv=_last_value(obv),
+            relative_volume=_last_value(relative_volume),
+            volume_profile=_last_value(volume_profile),
         )
