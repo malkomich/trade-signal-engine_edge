@@ -283,6 +283,7 @@ def test_build_market_snapshot_payload_omits_hold_signal_action() -> None:
     payload = _build_market_snapshot_payload(
         session_id="session-1",
         symbol="AAPL",
+        timeframe="1m",
         bars_series=[bar],
         snapshot=snapshot,
         entry_score=0.42,
@@ -295,3 +296,4 @@ def test_build_market_snapshot_payload_omits_hold_signal_action() -> None:
     )
 
     assert payload["signal_action"] is None
+    assert payload["timeframe"] == "1m"

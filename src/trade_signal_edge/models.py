@@ -63,26 +63,29 @@ class IndicatorSnapshot:
 
 def default_signal_weights() -> dict[str, float]:
     return {
-        "sma": 0.8,
+        "sma": 0.6,
         "ema": 1.0,
         "vwap": 1.2,
-        "bollinger": 0.9,
+        "bollinger": 0.7,
         "rsi": 0.9,
-        "atr": 0.4,
-        "dm": 0.5,
+        "atr": 0.5,
+        "dm": 0.6,
         "macd": 1.0,
         "stochastic": 0.5,
-        "obv": 0.8,
-        "relative_volume": 1.1,
-        "volume_profile": 0.7,
+        "obv": 0.9,
+        "relative_volume": 1.2,
+        "volume_profile": 0.8,
     }
 
 
 def default_timeframe_weights() -> dict[str, float]:
     return {
         "1m": 1.0,
-        "5m": 0.75,
-        "15m": 0.5,
+        "5m": 0.85,
+        "10m": 0.75,
+        "15m": 0.6,
+        "30m": 0.45,
+        "60m": 0.3,
     }
 
 

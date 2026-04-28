@@ -31,10 +31,10 @@ def test_load_runtime_config_defaults(monkeypatch) -> None:
     assert runtime.session_timezone == "America/New_York"
     assert runtime.entry_threshold == 0.7
     assert runtime.exit_threshold == 0.6
-    assert runtime.buy_signal_weights["sma"] == 0.8
-    assert runtime.sell_signal_weights["sma"] == 0.8
-    assert runtime.buy_timeframe_weights == {"1m": 1.0, "5m": 0.75, "15m": 0.5}
-    assert runtime.sell_timeframe_weights == {"1m": 1.0, "5m": 0.75, "15m": 0.5}
+    assert runtime.buy_signal_weights["sma"] == 0.6
+    assert runtime.sell_signal_weights["sma"] == 0.6
+    assert runtime.buy_timeframe_weights == {"1m": 1.0, "5m": 0.85, "10m": 0.75, "15m": 0.6, "30m": 0.45, "60m": 0.3}
+    assert runtime.sell_timeframe_weights == {"1m": 1.0, "5m": 0.85, "10m": 0.75, "15m": 0.6, "30m": 0.45, "60m": 0.3}
     assert runtime.alpaca_feed == "iex"
     assert runtime.alpaca_api_key_id is None
     assert runtime.alpaca_api_secret_key is None

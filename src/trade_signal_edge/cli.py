@@ -32,7 +32,7 @@ class ConfigError(RuntimeError):
     """Raised when the current runtime configuration cannot be used."""
 
 
-TIMEFRAME_KEYS = ("1m", "5m", "15m")
+TIMEFRAME_KEYS = ("1m", "5m", "10m", "15m", "30m", "60m")
 SIGNAL_WEIGHT_KEYS = (
     "sma",
     "ema",
@@ -353,7 +353,10 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     benchmark_series_by_timeframe = {
         "1m": benchmark_series,
         "5m": resample_bars(benchmark_series, 5),
+        "10m": resample_bars(benchmark_series, 10),
         "15m": resample_bars(benchmark_series, 15),
+        "30m": resample_bars(benchmark_series, 30),
+        "60m": resample_bars(benchmark_series, 60),
     }
     benchmark_snapshots_by_timeframe = {
         timeframe: indicator_calculator.compute(series)
@@ -367,6 +370,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         benchmark_market_payload = _build_market_snapshot_payload(
             session_id=runtime.session_id,
             symbol=runtime.benchmark_symbol,
+            timeframe="1m",
             bars_series=benchmark_series,
             snapshot=benchmark_snapshot,
             entry_score=0.0,
@@ -395,7 +399,10 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         timeframe_series = {
             "1m": bars_series,
             "5m": resample_bars(bars_series, 5),
+            "10m": resample_bars(bars_series, 10),
             "15m": resample_bars(bars_series, 15),
+            "30m": resample_bars(bars_series, 30),
+            "60m": resample_bars(bars_series, 60),
         }
         snapshots_by_timeframe = {
             timeframe: indicator_calculator.compute(series)
@@ -452,25 +459,30 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             except Exception as error:
                 errors.append(f"{current_symbol}: decision publish failed: {error}")
         if session_client is not None:
-            try:
-                session_client.publish_market_snapshot(
-                    runtime.session_id,
-                    _build_market_snapshot_payload(
-                        session_id=runtime.session_id,
-                        symbol=current_symbol,
-                        bars_series=bars_series,
-                        snapshot=snapshot,
-                        entry_score=decision.entry_score,
-                        exit_score=decision.exit_score,
-                        decision_action=decision.action.value,
-                        next_state=next_state.value,
-                        benchmark_symbol=runtime.benchmark_symbol,
-                        regime=decision.reasons[-1] if decision.reasons else "live market session",
-                        window_id=current_window_id,
-                    ),
-                )
-            except Exception as error:
-                errors.append(f"{current_symbol}: market snapshot publish failed: {error}")
+            for timeframe, timeframe_snapshot in snapshots_by_timeframe.items():
+                timeframe_bars = timeframe_series.get(timeframe)
+                if not timeframe_bars:
+                    continue
+                try:
+                    session_client.publish_market_snapshot(
+                        runtime.session_id,
+                        _build_market_snapshot_payload(
+                            session_id=runtime.session_id,
+                            symbol=current_symbol,
+                            timeframe=timeframe,
+                            bars_series=timeframe_bars,
+                            snapshot=timeframe_snapshot,
+                            entry_score=decision.entry_score,
+                            exit_score=decision.exit_score,
+                            decision_action=decision.action.value,
+                            next_state=next_state.value,
+                            benchmark_symbol=runtime.benchmark_symbol,
+                            regime=decision.reasons[-1] if decision.reasons else "live market session",
+                            window_id=current_window_id,
+                        ),
+                    )
+                except Exception as error:
+                    errors.append(f"{current_symbol} {timeframe}: market snapshot publish failed: {error}")
         decisions.append(
             {
                 "symbol": current_symbol,
@@ -627,6 +639,7 @@ def _combine_timeframe_decisions(
 def _build_market_snapshot_payload(
     session_id: str,
     symbol: str,
+    timeframe: str,
     bars_series,
     snapshot,
     entry_score: float,
@@ -643,6 +656,7 @@ def _build_market_snapshot_payload(
         "session_id": session_id,
         "window_id": window_id,
         "symbol": symbol,
+        "timeframe": timeframe,
         "timestamp": snapshot.timestamp.isoformat(),
         "created_at": snapshot.timestamp.isoformat(),
         "updated_at": snapshot.timestamp.isoformat(),
