@@ -161,6 +161,60 @@ def test_signal_engine_biases_are_covered_for_rsi_and_stochastic() -> None:
     assert engine._stochastic_bias(40.0, 35.0) == (0.5, -0.1)
 
 
+def test_signal_engine_sell_pressure_bias_normalizes_and_gates_missing_obv() -> None:
+    engine = SignalEngine()
+    bearish_snapshot = IndicatorSnapshot(
+        symbol="TSLA",
+        timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
+        close=198.0,
+        sma_fast=200.0,
+        sma_slow=198.8,
+        ema_fast=199.5,
+        ema_slow=198.6,
+        vwap=197.5,
+        rsi=72.0,
+        atr=2.9,
+        plus_di=22.0,
+        minus_di=17.0,
+        adx=23.0,
+        macd=0.15,
+        macd_signal=0.1,
+        macd_histogram=-0.05,
+        stochastic_k=88.0,
+        stochastic_d=91.0,
+        obv=1_000.0,
+        relative_volume=1.2,
+        volume_profile=0.22,
+    )
+    neutral_snapshot = IndicatorSnapshot(
+        symbol="TSLA",
+        timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
+        close=200.4,
+        sma_fast=200.0,
+        sma_slow=198.8,
+        ema_fast=199.8,
+        ema_slow=198.6,
+        vwap=197.5,
+        rsi=58.0,
+        atr=2.9,
+        plus_di=24.0,
+        minus_di=16.0,
+        adx=23.0,
+        macd=0.15,
+        macd_signal=0.1,
+        macd_histogram=0.05,
+        stochastic_k=52.0,
+        stochastic_d=49.0,
+        obv=None,
+        relative_volume=1.2,
+        volume_profile=0.22,
+    )
+
+    assert 0.0 <= engine._sell_pressure_bias(bearish_snapshot) <= 1.0
+    assert engine._sell_pressure_bias(neutral_snapshot) < engine._sell_pressure_bias(bearish_snapshot)
+    assert engine.is_strong_exit_pressure(neutral_snapshot) is False
+
+
 def test_signal_engine_obv_bias_uses_relative_flow_context() -> None:
     engine = SignalEngine()
 
@@ -171,6 +225,7 @@ def test_signal_engine_obv_bias_uses_relative_flow_context() -> None:
 
 
 def test_signal_engine_uses_exit_pressure_for_open_positions() -> None:
+    engine = SignalEngine()
     snapshot = IndicatorSnapshot(
         symbol="TSLA",
         timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
@@ -192,10 +247,10 @@ def test_signal_engine_uses_exit_pressure_for_open_positions() -> None:
         stochastic_d=91.0,
     )
 
-    decision = SignalEngine().evaluate(snapshot, TradeState.ACCEPTED_OPEN)
+    decision = engine.evaluate(snapshot, TradeState.ACCEPTED_OPEN)
 
     assert decision.action is SignalAction.SELL_ALERT
-    assert decision.exit_score >= 0.7
+    assert decision.exit_score >= engine.config.exit_threshold
     assert "exit-pressure" in decision.reasons
 
 

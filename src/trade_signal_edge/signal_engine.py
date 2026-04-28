@@ -12,6 +12,8 @@ try:
 except Exception:  # pragma: no cover - fallback for stripped tzdata environments
     NEW_YORK_TIMEZONE = timezone.utc
 
+SELL_PRESSURE_MAX_SCORE = 1.3
+
 
 def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
     return max(lower, min(upper, value))
@@ -65,6 +67,7 @@ class SignalEngine:
         benchmark_entry, benchmark_exit, benchmark_reason = self._benchmark_bias(snapshot, benchmark)
         profile_entry, profile_exit, profile_reason = self._optimization_bias(snapshot)
         risk_score = self._risk_score(snapshot)
+        strong_exit_pressure = self.is_strong_exit_pressure(snapshot)
         sell_pressure = self._sell_pressure_bias(snapshot)
 
         add("sma", sma_bias, -sma_bias)
@@ -98,8 +101,9 @@ class SignalEngine:
             _score_from_signal(exit_raw, sell_max_weight + benchmark_exit_weight)
             + (risk_score * 0.3)
             + (sell_pressure * 0.5)
+            + (0.08 if strong_exit_pressure else 0.0)
         )
-        action, action_reasons = self.decide_action(entry_score, exit_score, state, snapshot, benchmark)
+        action, action_reasons = self.decide_action(entry_score, exit_score, state, snapshot, benchmark, strong_exit_pressure)
         reasons.extend(action_reasons)
 
         if benchmark_reason is not None:
@@ -128,7 +132,7 @@ class SignalEngine:
         if strong_exit_pressure is None:
             strong_exit_pressure = self.is_strong_exit_pressure(snapshot)
 
-        if state is TradeState.ACCEPTED_OPEN and (exit_score >= self.config.exit_threshold or strong_exit_pressure):
+        if state is TradeState.ACCEPTED_OPEN and exit_score >= self.config.exit_threshold:
             reasons: list[str] = []
             if strong_exit_pressure:
                 reasons.append("exit-pressure")
@@ -178,20 +182,18 @@ class SignalEngine:
 
     def _sell_pressure_bias(self, snapshot: IndicatorSnapshot) -> float:
         score = 0.0
+        macd_bearish = snapshot.macd_histogram is not None and snapshot.macd_histogram < 0
         if snapshot.rsi is not None and snapshot.stochastic_k is not None:
             if snapshot.rsi >= 70 and snapshot.stochastic_k >= 80:
                 score += 0.45
             elif snapshot.rsi >= 65 and snapshot.stochastic_k >= 85:
                 score += 0.3
-        if snapshot.vwap is not None and snapshot.macd_histogram is not None:
-            if snapshot.close < snapshot.vwap and snapshot.macd_histogram < 0:
-                score += 0.2
-        if snapshot.bollinger_middle is not None and snapshot.macd_histogram is not None:
-            if snapshot.close < snapshot.bollinger_middle and snapshot.macd_histogram < 0:
-                score += 0.15
-        if snapshot.ema_fast is not None and snapshot.macd_histogram is not None:
-            if snapshot.close < snapshot.ema_fast and snapshot.macd_histogram < 0:
-                score += 0.15
+        if snapshot.vwap is not None and macd_bearish and snapshot.close < snapshot.vwap:
+            score += 0.2
+        if snapshot.bollinger_middle is not None and macd_bearish and snapshot.close < snapshot.bollinger_middle:
+            score += 0.15
+        if snapshot.ema_fast is not None and macd_bearish and snapshot.close < snapshot.ema_fast:
+            score += 0.15
         if snapshot.plus_di is not None and snapshot.minus_di is not None and snapshot.adx is not None:
             if snapshot.adx >= 20 and snapshot.minus_di > snapshot.plus_di:
                 score += 0.15
@@ -199,7 +201,7 @@ class SignalEngine:
             score += 0.1
         if snapshot.volume_profile is not None and snapshot.volume_profile < 0.15:
             score += 0.1
-        return _clamp(score)
+        return _clamp(score / SELL_PRESSURE_MAX_SCORE)
 
     def _trend_bias(self, fast: float | None, slow: float | None) -> float:
         if fast is None or slow is None or not isfinite(fast) or not isfinite(slow):
