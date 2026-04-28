@@ -29,10 +29,10 @@ def test_load_runtime_config_defaults(monkeypatch) -> None:
     assert runtime.provider == "synthetic"
     assert runtime.api_base_url is None
     assert runtime.session_timezone == "America/New_York"
-    assert runtime.entry_threshold == 0.65
-    assert runtime.exit_threshold == 0.55
-    assert runtime.buy_signal_weights["sma"] == 1.7
-    assert runtime.sell_signal_weights["sma"] == 1.7
+    assert runtime.entry_threshold == 0.7
+    assert runtime.exit_threshold == 0.6
+    assert runtime.buy_signal_weights["sma"] == 0.8
+    assert runtime.sell_signal_weights["sma"] == 0.8
     assert runtime.buy_timeframe_weights == {"1m": 1.0, "5m": 0.75, "15m": 0.5}
     assert runtime.sell_timeframe_weights == {"1m": 1.0, "5m": 0.75, "15m": 0.5}
     assert runtime.alpaca_feed == "iex"
@@ -70,8 +70,8 @@ def test_load_runtime_config_reads_environment(monkeypatch) -> None:
     assert runtime.provider == "alpaca"
     assert runtime.api_base_url == "https://api.example.com"
     assert runtime.session_timezone == "America/New_York"
-    assert runtime.entry_threshold == 0.65
-    assert runtime.exit_threshold == 0.55
+    assert runtime.entry_threshold == 0.7
+    assert runtime.exit_threshold == 0.6
     assert runtime.alpaca_feed == "sip"
     assert runtime.alpaca_api_key_id == "key"
     assert runtime.alpaca_api_secret_key == "secret"
