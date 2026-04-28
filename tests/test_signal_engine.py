@@ -89,6 +89,33 @@ def test_signal_engine_uses_configured_entry_exit_margin() -> None:
     assert strict.action is SignalAction.HOLD
 
 
+def test_signal_engine_requires_long_entry_quality_even_with_a_good_score() -> None:
+    snapshot = IndicatorSnapshot(
+        symbol="AMZN",
+        timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
+        close=100.4,
+        sma_fast=99.8,
+        sma_slow=100.2,
+        ema_fast=99.7,
+        ema_slow=100.3,
+        vwap=100.8,
+        rsi=61.0,
+        atr=1.05,
+        plus_di=19.0,
+        minus_di=22.0,
+        adx=24.0,
+        macd=0.35,
+        macd_signal=0.18,
+        macd_histogram=0.17,
+        stochastic_k=39.0,
+        stochastic_d=42.0,
+    )
+
+    decision = SignalEngine(SignalConfig(entry_threshold=0.2, exit_threshold=0.55)).evaluate(snapshot, TradeState.FLAT)
+
+    assert decision.action is SignalAction.HOLD
+
+
 def test_signal_engine_uses_exit_pressure_for_open_positions() -> None:
     snapshot = IndicatorSnapshot(
         symbol="TSLA",

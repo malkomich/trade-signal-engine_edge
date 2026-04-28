@@ -69,7 +69,7 @@ class SignalEngine:
         benchmark_exit_weight = 0.425
         entry_score = _score_from_signal(entry_raw, buy_max_weight + benchmark_entry_weight)
         exit_score = _score_from_signal(exit_raw, sell_max_weight + benchmark_exit_weight)
-        action, action_reasons = self.decide_action(entry_score, exit_score, state, snapshot)
+        action, action_reasons = self.decide_action(entry_score, exit_score, state, snapshot, benchmark)
         reasons.extend(action_reasons)
 
         if benchmark_reason is not None:
@@ -92,6 +92,7 @@ class SignalEngine:
         exit_score: float,
         state: TradeState,
         snapshot: IndicatorSnapshot | None = None,
+        benchmark: IndicatorSnapshot | None = None,
         strong_exit_pressure: bool | None = None,
     ) -> tuple[SignalAction, tuple[str, ...]]:
         if strong_exit_pressure is None:
@@ -107,6 +108,8 @@ class SignalEngine:
         if state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= self.config.entry_threshold:
             if strong_exit_pressure or exit_score >= entry_score - self.config.entry_exit_margin:
                 return SignalAction.HOLD, ()
+            if not self._long_entry_quality(snapshot, benchmark):
+                return SignalAction.HOLD, ()
             return SignalAction.BUY_ALERT, ("entry-qualified",)
 
         return SignalAction.HOLD, ()
@@ -119,6 +122,12 @@ class SignalEngine:
                 return True
         if snapshot.vwap is not None and snapshot.macd_histogram is not None:
             if snapshot.close < snapshot.vwap and snapshot.macd_histogram < 0:
+                return True
+        if snapshot.ema_fast is not None and snapshot.macd_histogram is not None:
+            if snapshot.close < snapshot.ema_fast and snapshot.macd_histogram < 0:
+                return True
+        if snapshot.plus_di is not None and snapshot.minus_di is not None and snapshot.adx is not None:
+            if snapshot.adx >= 20 and snapshot.minus_di > snapshot.plus_di:
                 return True
         return False
 
@@ -140,15 +149,17 @@ class SignalEngine:
     def _rsi_bias(self, rsi: float | None) -> tuple[float, float]:
         if rsi is None or not isfinite(rsi):
             return 0.0, 0.0
-        if rsi >= 70:
-            return -0.8, 1.0
+        if rsi >= 72:
+            return -1.0, 1.0
+        if rsi >= 65:
+            return 0.3, 0.2
         if rsi >= 55:
-            return 1.0, -0.4
+            return 0.9, -0.3
         if rsi >= 45:
-            return 0.2, 0.2
-        if rsi >= 30:
-            return -0.5, 0.6
-        return -1.0, 0.9
+            return 0.5, 0.0
+        if rsi >= 35:
+            return -0.4, 0.5
+        return -1.0, 0.8
 
     def _atr_bias(self, atr: float | None, close: float) -> tuple[float, float]:
         if atr is None or close <= 0 or not isfinite(atr):
@@ -188,11 +199,13 @@ class SignalEngine:
             return 0.0, 0.0
         if stochastic_k < 20 and stochastic_k > stochastic_d:
             return 0.9, -0.3
-        if stochastic_k > 80 and stochastic_k < stochastic_d:
-            return -0.9, 0.9
-        if stochastic_k > stochastic_d:
-            return 0.3, 0.0
-        return 0.0, 0.3
+        if stochastic_k > 80 and stochastic_k >= stochastic_d:
+            return -1.0, 1.0
+        if stochastic_k > stochastic_d and stochastic_k >= 35:
+            return 0.5, -0.1
+        if stochastic_k < stochastic_d and stochastic_k <= 30:
+            return -0.4, 0.6
+        return 0.1, 0.1
 
     def _benchmark_bias(
         self,
@@ -290,3 +303,28 @@ class SignalEngine:
             "stochastic_k": snapshot.stochastic_k,
             "stochastic_d": snapshot.stochastic_d,
         }
+
+    def _long_entry_quality(self, snapshot: IndicatorSnapshot, benchmark: IndicatorSnapshot | None) -> bool:
+        checks: list[bool] = []
+
+        if snapshot.ema_fast is not None and snapshot.ema_slow is not None:
+            checks.append(snapshot.ema_fast > snapshot.ema_slow)
+        if snapshot.sma_fast is not None and snapshot.sma_slow is not None:
+            checks.append(snapshot.sma_fast >= snapshot.sma_slow)
+        if snapshot.vwap is not None:
+            checks.append(snapshot.close >= snapshot.vwap)
+        if snapshot.macd is not None and snapshot.macd_signal is not None and snapshot.macd_histogram is not None:
+            checks.append(snapshot.macd > snapshot.macd_signal and snapshot.macd_histogram >= 0)
+        if snapshot.plus_di is not None and snapshot.minus_di is not None:
+            checks.append(snapshot.plus_di >= snapshot.minus_di)
+        if snapshot.rsi is not None:
+            checks.append(45 <= snapshot.rsi < 72)
+        if snapshot.stochastic_k is not None and snapshot.stochastic_d is not None:
+            checks.append(snapshot.stochastic_k >= snapshot.stochastic_d and snapshot.stochastic_k < 80)
+        if benchmark is not None and benchmark.ema_fast is not None and benchmark.ema_slow is not None:
+            checks.append(benchmark.ema_fast >= benchmark.ema_slow)
+
+        if not checks:
+            return False
+
+        return sum(1 for check in checks if check) >= max(4, int(len(checks) * 0.7))
