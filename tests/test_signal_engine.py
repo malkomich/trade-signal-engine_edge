@@ -166,7 +166,7 @@ def test_signal_engine_obv_bias_uses_relative_flow_context() -> None:
 
     assert engine._obv_bias(1_000.0, 1.2, 0.25) == (0.6, -0.1)
     assert engine._obv_bias(-1_000.0, 0.75, 0.1) == (-0.5, 0.7)
-    assert engine._obv_bias(1_000.0, 0.75, 0.1) == engine._obv_bias(-1_000.0, 0.75, 0.1)
+    assert engine._obv_bias(1_000.0, 0.75, 0.1) == (0.1, 0.1)
     assert engine._obv_bias(0.0, 1.0, 0.18) == (0.1, 0.1)
 
 

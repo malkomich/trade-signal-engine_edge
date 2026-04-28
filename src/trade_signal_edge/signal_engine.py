@@ -247,9 +247,9 @@ class SignalEngine:
     ) -> tuple[float, float]:
         if _obv is None or not isfinite(_obv):
             return 0.0, 0.0
-        if relative_volume is not None and relative_volume >= 1.1 and volume_profile is not None and volume_profile >= 0.18:
+        if _obv > 0 and relative_volume is not None and relative_volume >= 1.1 and volume_profile is not None and volume_profile >= 0.18:
             return 0.6, -0.1
-        if relative_volume is not None and relative_volume < 0.9 and (volume_profile is None or volume_profile < 0.15):
+        if _obv < 0 and relative_volume is not None and relative_volume < 0.9 and (volume_profile is None or volume_profile < 0.15):
             return -0.5, 0.7
         return 0.1, 0.1
 
