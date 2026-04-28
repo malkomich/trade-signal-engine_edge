@@ -22,6 +22,13 @@ class SignalAction(str, Enum):
     SELL_ALERT = "SELL_ALERT"
 
 
+class SignalTier(str, Enum):
+    CONVICTION_BUY = "conviction_buy"
+    BALANCED_BUY = "balanced_buy"
+    OPPORTUNISTIC_BUY = "opportunistic_buy"
+    SPECULATIVE_BUY = "speculative_buy"
+
+
 @dataclass(frozen=True, slots=True)
 class Bar:
     symbol: str
@@ -110,6 +117,7 @@ class SignalDecision:
     entry_score: float
     exit_score: float
     action: SignalAction
+    signal_tier: Optional[SignalTier] = None
     reasons: tuple[str, ...] = ()
 
 

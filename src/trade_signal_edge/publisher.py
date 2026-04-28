@@ -28,6 +28,7 @@ class HttpDecisionPublisher:
             "reason": "; ".join(decision.reasons) if decision.reasons else "signal-evaluated",
             "entry_score": decision.entry_score,
             "exit_score": decision.exit_score,
+            "signal_tier": decision.signal_tier.value if decision.signal_tier is not None else None,
             "requested_by": "edge",
         }
         body = json.dumps(payload).encode("utf-8")

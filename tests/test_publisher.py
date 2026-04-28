@@ -39,4 +39,5 @@ def test_http_decision_publisher_url_encodes_session_id() -> None:
 
     assert captured["method"] == "POST"
     assert captured["url"] == "https://api.example.com/v1/sessions/session%2Fwith%20spaces%3Fand%23chars/accept"
+    assert b'"signal_tier": null' in captured["data"]
     assert result == {"window_id": "session:NVDA:decision-1"}

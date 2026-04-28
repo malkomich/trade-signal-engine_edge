@@ -30,6 +30,7 @@ def test_signal_engine_raises_buy_alert_when_trend_is_aligned() -> None:
 
     assert decision.action is SignalAction.BUY_ALERT
     assert decision.entry_score > decision.exit_score
+    assert decision.signal_tier is not None
 
 
 def test_signal_engine_vetoes_entries_when_exit_pressure_is_high() -> None:
@@ -148,6 +149,7 @@ def test_signal_engine_rejects_missing_snapshot_for_entry_action() -> None:
 
     assert decision[0] is SignalAction.HOLD
     assert decision[1] == ()
+    assert decision[2] is None
 
 
 def test_signal_engine_biases_are_covered_for_rsi_and_stochastic() -> None:
@@ -252,6 +254,7 @@ def test_signal_engine_uses_exit_pressure_for_open_positions() -> None:
     assert decision.action is SignalAction.SELL_ALERT
     assert decision.exit_score >= engine.config.exit_threshold
     assert "exit-pressure" in decision.reasons
+    assert decision.signal_tier is None
 
 
 def test_signal_engine_penalizes_opening_session_risk_for_entries() -> None:

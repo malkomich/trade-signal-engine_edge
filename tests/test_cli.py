@@ -301,6 +301,7 @@ def test_build_market_snapshot_payload_omits_hold_signal_action() -> None:
     )
 
     assert payload["signal_action"] is None
+    assert payload["signal_tier"] is None
     assert payload["timeframe"] == "1m"
 
 
