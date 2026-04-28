@@ -71,6 +71,7 @@ class SignalEngine:
         session_risk = self._session_risk(snapshot.timestamp)
         strong_exit_pressure = self.is_strong_exit_pressure(snapshot)
         sell_pressure = self._sell_pressure_bias(snapshot)
+        long_entry_quality_score = self._long_entry_quality_score(snapshot, benchmark)
 
         add("sma", sma_bias, -sma_bias)
         add("ema", ema_bias, -ema_bias)
@@ -96,14 +97,21 @@ class SignalEngine:
         benchmark_exit_weight = 0.425
         entry_score = _clamp(
             _score_from_signal(entry_raw, buy_max_weight + benchmark_entry_weight)
-            * (1.0 - (risk_score * 0.25))
-            * (1.0 - (sell_pressure * 0.1))
+            * (1.0 - (risk_score * 0.17))
+            * (1.0 - (sell_pressure * 0.06))
         )
         exit_score = _clamp(
             _score_from_signal(exit_raw, sell_max_weight + benchmark_exit_weight)
             + (risk_score * 0.3)
             + (sell_pressure * 0.5)
             + (0.08 if strong_exit_pressure else 0.0)
+        )
+        buy_tier = self._buy_signal_tier(
+            entry_score=entry_score,
+            risk_score=risk_score,
+            quality_score=long_entry_quality_score,
+            session_risk=session_risk,
+            strong_exit_pressure=strong_exit_pressure,
         )
         action, action_reasons, signal_tier = self.decide_action(
             entry_score,
@@ -114,6 +122,7 @@ class SignalEngine:
             risk_score,
             session_risk,
             strong_exit_pressure,
+            buy_tier,
         )
         reasons.extend(action_reasons)
 
@@ -142,6 +151,7 @@ class SignalEngine:
         risk_score: float | None = None,
         session_risk: float | None = None,
         strong_exit_pressure: bool | None = None,
+        buy_tier: SignalTier | None = None,
     ) -> tuple[SignalAction, tuple[str, ...], SignalTier | None]:
         if strong_exit_pressure is None:
             strong_exit_pressure = self.is_strong_exit_pressure(snapshot)
@@ -153,7 +163,7 @@ class SignalEngine:
             reasons.append("exit-qualified")
             return SignalAction.SELL_ALERT, tuple(reasons), None
 
-        if state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= max(
+        if state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= min(
             self.config.entry_threshold,
             BUY_ENTRY_FLOOR,
         ):
@@ -162,22 +172,23 @@ class SignalEngine:
             quality_score = self._long_entry_quality_score(snapshot, benchmark)
             if quality_score <= 0:
                 return SignalAction.HOLD, (), None
-            effective_margin = self.config.entry_exit_margin
+            effective_margin = max(0.04, self.config.entry_exit_margin * 0.85)
             if strong_exit_pressure:
-                effective_margin += 0.05
+                effective_margin += 0.04
             if exit_score >= entry_score - effective_margin:
                 return SignalAction.HOLD, (), None
-            if risk_score is None:
-                risk_score = self._risk_score(snapshot)
-            if session_risk is None:
-                session_risk = self._session_risk(snapshot.timestamp)
-            buy_tier = self._buy_signal_tier(
-                entry_score=entry_score,
-                risk_score=risk_score,
-                quality_score=quality_score,
-                session_risk=session_risk,
-                strong_exit_pressure=strong_exit_pressure,
-            )
+            if buy_tier is None:
+                if risk_score is None:
+                    risk_score = self._risk_score(snapshot)
+                if session_risk is None:
+                    session_risk = self._session_risk(snapshot.timestamp)
+                buy_tier = self._buy_signal_tier(
+                    entry_score=entry_score,
+                    risk_score=risk_score,
+                    quality_score=quality_score,
+                    session_risk=session_risk,
+                    strong_exit_pressure=strong_exit_pressure,
+                )
             if buy_tier is None:
                 return SignalAction.HOLD, (), None
             return SignalAction.BUY_ALERT, ("entry-qualified", f"buy-tier:{buy_tier.value}"), buy_tier
@@ -604,18 +615,18 @@ class SignalEngine:
         high_risk_penalty = 0.05 if risk_score >= 0.75 else 0.0
         opening_penalty = 0.0
         if session_risk >= 0.95:
-            opening_penalty = 0.18
-        elif session_risk >= 0.85:
             opening_penalty = 0.12
+        elif session_risk >= 0.85:
+            opening_penalty = 0.08
         elif session_risk >= 0.7:
-            opening_penalty = 0.06
+            opening_penalty = 0.04
         tier_quality_penalty = pressure_penalty + opening_penalty
-        if entry_score >= 0.78 + opening_penalty and risk_score <= 0.55 and quality_score >= 0.72 + tier_quality_penalty:
+        if entry_score >= 0.78 + opening_penalty and risk_score <= 0.6 and quality_score >= 0.72 + tier_quality_penalty:
             return SignalTier.CONVICTION_BUY
-        if entry_score >= 0.68 + opening_penalty and risk_score <= 0.68 and quality_score >= 0.60 + tier_quality_penalty:
+        if entry_score >= 0.7 + opening_penalty and risk_score <= 0.74 and quality_score >= 0.6 + tier_quality_penalty:
             return SignalTier.BALANCED_BUY
-        if entry_score >= 0.58 + opening_penalty and risk_score <= 0.82 and quality_score >= 0.50 + tier_quality_penalty + high_risk_penalty:
+        if entry_score >= 0.58 + opening_penalty and risk_score <= 0.86 and quality_score >= 0.5 + tier_quality_penalty + high_risk_penalty:
             return SignalTier.OPPORTUNISTIC_BUY
-        if entry_score >= 0.52 + opening_penalty and risk_score <= 0.90 and quality_score >= 0.42 + tier_quality_penalty + high_risk_penalty:
+        if entry_score >= 0.52 + opening_penalty and risk_score <= 0.94 and quality_score >= 0.42 + tier_quality_penalty + high_risk_penalty:
             return SignalTier.SPECULATIVE_BUY
         return None
