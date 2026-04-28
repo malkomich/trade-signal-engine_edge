@@ -65,6 +65,7 @@ class SignalEngine:
         benchmark_entry, benchmark_exit, benchmark_reason = self._benchmark_bias(snapshot, benchmark)
         profile_entry, profile_exit, profile_reason = self._optimization_bias(snapshot)
         risk_score = self._risk_score(snapshot)
+        sell_pressure = self._sell_pressure_bias(snapshot)
 
         add("sma", sma_bias, -sma_bias)
         add("ema", ema_bias, -ema_bias)
@@ -88,8 +89,16 @@ class SignalEngine:
         # The benchmark term is capped separately in _benchmark_bias, so normalize each side with its own bound.
         benchmark_entry_weight = 0.575
         benchmark_exit_weight = 0.425
-        entry_score = _clamp(_score_from_signal(entry_raw, buy_max_weight + benchmark_entry_weight) * (1.0 - (risk_score * 0.25)))
-        exit_score = _clamp(_score_from_signal(exit_raw, sell_max_weight + benchmark_exit_weight) + (risk_score * 0.35))
+        entry_score = _clamp(
+            _score_from_signal(entry_raw, buy_max_weight + benchmark_entry_weight)
+            * (1.0 - (risk_score * 0.25))
+            * (1.0 - (sell_pressure * 0.1))
+        )
+        exit_score = _clamp(
+            _score_from_signal(exit_raw, sell_max_weight + benchmark_exit_weight)
+            + (risk_score * 0.3)
+            + (sell_pressure * 0.5)
+        )
         action, action_reasons = self.decide_action(entry_score, exit_score, state, snapshot, benchmark)
         reasons.extend(action_reasons)
 
@@ -166,6 +175,31 @@ class SignalEngine:
         if snapshot.volume_profile is not None and snapshot.volume_profile < 0.12:
             return True
         return False
+
+    def _sell_pressure_bias(self, snapshot: IndicatorSnapshot) -> float:
+        score = 0.0
+        if snapshot.rsi is not None and snapshot.stochastic_k is not None:
+            if snapshot.rsi >= 70 and snapshot.stochastic_k >= 80:
+                score += 0.45
+            elif snapshot.rsi >= 65 and snapshot.stochastic_k >= 85:
+                score += 0.3
+        if snapshot.vwap is not None and snapshot.macd_histogram is not None:
+            if snapshot.close < snapshot.vwap and snapshot.macd_histogram < 0:
+                score += 0.2
+        if snapshot.bollinger_middle is not None and snapshot.macd_histogram is not None:
+            if snapshot.close < snapshot.bollinger_middle and snapshot.macd_histogram < 0:
+                score += 0.15
+        if snapshot.ema_fast is not None and snapshot.macd_histogram is not None:
+            if snapshot.close < snapshot.ema_fast and snapshot.macd_histogram < 0:
+                score += 0.15
+        if snapshot.plus_di is not None and snapshot.minus_di is not None and snapshot.adx is not None:
+            if snapshot.adx >= 20 and snapshot.minus_di > snapshot.plus_di:
+                score += 0.15
+        if snapshot.relative_volume is not None and snapshot.relative_volume < 0.9:
+            score += 0.1
+        if snapshot.volume_profile is not None and snapshot.volume_profile < 0.15:
+            score += 0.1
+        return _clamp(score)
 
     def _trend_bias(self, fast: float | None, slow: float | None) -> float:
         if fast is None or slow is None or not isfinite(fast) or not isfinite(slow):
@@ -386,16 +420,16 @@ class SignalEngine:
         if minute_of_day < market_open:
             return 0.0
         if minute_of_day < 10 * 60:
-            return 0.95
+            return 1.0
         if minute_of_day < 10 * 60 + 30:
-            return 0.85
+            return 0.9
         if minute_of_day < 11 * 60 + 30:
-            return 0.65
+            return 0.7
         if minute_of_day < 14 * 60 + 30:
-            return 0.4
+            return 0.45
         if minute_of_day < 15 * 60 + 30:
-            return 0.55
-        return 0.75
+            return 0.6
+        return 0.8
 
     def _microstructure_risk(self, snapshot: IndicatorSnapshot) -> float:
         score = 0.0

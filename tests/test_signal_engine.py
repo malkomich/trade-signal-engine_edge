@@ -195,6 +195,7 @@ def test_signal_engine_uses_exit_pressure_for_open_positions() -> None:
     decision = SignalEngine().evaluate(snapshot, TradeState.ACCEPTED_OPEN)
 
     assert decision.action is SignalAction.SELL_ALERT
+    assert decision.exit_score >= 0.7
     assert "exit-pressure" in decision.reasons
 
 
