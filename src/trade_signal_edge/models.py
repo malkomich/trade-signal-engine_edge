@@ -79,14 +79,13 @@ def default_signal_weights() -> dict[str, float]:
 
 
 def default_timeframe_weights() -> dict[str, float]:
-    return {
-        "1m": 1.0,
-        "5m": 0.85,
-        "10m": 0.75,
-        "15m": 0.6,
-        "30m": 0.45,
-        "60m": 0.3,
-    }
+    return dict(
+        zip(
+            TIMEFRAME_KEYS,
+            (1.0, 0.85, 0.75, 0.6, 0.45, 0.3),
+            strict=True,
+        )
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,3 +120,4 @@ class TradeWindow:
     opened_at: datetime
     closed_at: Optional[datetime] = None
     status: TradeState = TradeState.FLAT
+TIMEFRAME_KEYS = ("1m", "5m", "10m", "15m", "30m", "60m")

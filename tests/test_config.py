@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from trade_signal_edge.models import TIMEFRAME_KEYS
 from trade_signal_edge.config import load_runtime_config
 
 
@@ -31,10 +32,27 @@ def test_load_runtime_config_defaults(monkeypatch) -> None:
     assert runtime.session_timezone == "America/New_York"
     assert runtime.entry_threshold == 0.7
     assert runtime.exit_threshold == 0.6
+    assert runtime.entry_exit_margin == 0.1
     assert runtime.buy_signal_weights["sma"] == 0.6
+    assert runtime.buy_signal_weights["vwap"] == 1.2
+    assert runtime.buy_signal_weights["macd"] == 1.0
     assert runtime.sell_signal_weights["sma"] == 0.6
-    assert runtime.buy_timeframe_weights == {"1m": 1.0, "5m": 0.85, "10m": 0.75, "15m": 0.6, "30m": 0.45, "60m": 0.3}
-    assert runtime.sell_timeframe_weights == {"1m": 1.0, "5m": 0.85, "10m": 0.75, "15m": 0.6, "30m": 0.45, "60m": 0.3}
+    assert runtime.sell_signal_weights["vwap"] == 1.2
+    assert runtime.sell_signal_weights["macd"] == 1.0
+    assert tuple(runtime.buy_timeframe_weights.keys()) == TIMEFRAME_KEYS
+    assert tuple(runtime.sell_timeframe_weights.keys()) == TIMEFRAME_KEYS
+    assert runtime.buy_timeframe_weights["1m"] == 1.0
+    assert runtime.buy_timeframe_weights["5m"] == 0.85
+    assert runtime.buy_timeframe_weights["10m"] == 0.75
+    assert runtime.buy_timeframe_weights["15m"] == 0.6
+    assert runtime.buy_timeframe_weights["30m"] == 0.45
+    assert runtime.buy_timeframe_weights["60m"] == 0.3
+    assert runtime.sell_timeframe_weights["1m"] == 1.0
+    assert runtime.sell_timeframe_weights["5m"] == 0.85
+    assert runtime.sell_timeframe_weights["10m"] == 0.75
+    assert runtime.sell_timeframe_weights["15m"] == 0.6
+    assert runtime.sell_timeframe_weights["30m"] == 0.45
+    assert runtime.sell_timeframe_weights["60m"] == 0.3
     assert runtime.alpaca_feed == "iex"
     assert runtime.alpaca_api_key_id is None
     assert runtime.alpaca_api_secret_key is None
@@ -72,6 +90,7 @@ def test_load_runtime_config_reads_environment(monkeypatch) -> None:
     assert runtime.session_timezone == "America/New_York"
     assert runtime.entry_threshold == 0.7
     assert runtime.exit_threshold == 0.6
+    assert runtime.entry_exit_margin == 0.1
     assert runtime.alpaca_feed == "sip"
     assert runtime.alpaca_api_key_id == "key"
     assert runtime.alpaca_api_secret_key == "secret"
