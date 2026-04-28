@@ -35,8 +35,6 @@ class ConfigError(RuntimeError):
 
 
 logger = logging.getLogger(__name__)
-
-
 SIGNAL_WEIGHT_KEYS = (
     "sma",
     "ema",
