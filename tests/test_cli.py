@@ -41,6 +41,15 @@ def test_combine_timeframe_decisions_prefers_weighted_entry_and_missing_timefram
         stochastic_k=34.0,
         stochastic_d=28.0,
     )
+    benchmark = IndicatorSnapshot(
+        symbol="QQQ",
+        timestamp=timestamp,
+        close=101.0,
+        ema_fast=100.8,
+        ema_slow=100.1,
+        sma_fast=100.7,
+        sma_slow=100.0,
+    )
     engine = SignalEngine(SignalConfig(entry_threshold=0.65, exit_threshold=0.55))
 
     decision = _combine_timeframe_decisions(
@@ -53,6 +62,7 @@ def test_combine_timeframe_decisions_prefers_weighted_entry_and_missing_timefram
         {"1m": 1.0, "5m": 0.0, "15m": 0.0},
         engine,
         TradeState.FLAT,
+        benchmark,
     )
 
     assert decision.action is SignalAction.BUY_ALERT
@@ -60,6 +70,65 @@ def test_combine_timeframe_decisions_prefers_weighted_entry_and_missing_timefram
     assert decision.exit_score == 0.21
     assert "1m:trend-aligned" in decision.reasons
     assert "entry-qualified" in decision.reasons
+
+
+def test_combine_timeframe_decisions_applies_benchmark_filter() -> None:
+    timestamp = datetime(2026, 4, 24, 13, 30, tzinfo=timezone.utc)
+    snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=timestamp,
+        close=102.0,
+        sma_fast=101.5,
+        sma_slow=100.2,
+        ema_fast=101.8,
+        ema_slow=100.6,
+        vwap=100.8,
+        rsi=62.0,
+        atr=1.25,
+        plus_di=28.0,
+        minus_di=14.0,
+        adx=26.0,
+        macd=1.1,
+        macd_signal=0.85,
+        macd_histogram=0.25,
+        stochastic_k=34.0,
+        stochastic_d=28.0,
+    )
+    bearish_benchmark = IndicatorSnapshot(
+        symbol="QQQ",
+        timestamp=timestamp,
+        close=99.0,
+        ema_fast=98.8,
+        ema_slow=100.1,
+        sma_fast=99.2,
+        sma_slow=100.0,
+    )
+    class RecordingSignalEngine(SignalEngine):
+        def __init__(self) -> None:
+            super().__init__(SignalConfig(entry_threshold=0.65, exit_threshold=0.55))
+            self.seen_benchmark = None
+
+        def decide_action(self, *args, **kwargs):  # type: ignore[override]
+            self.seen_benchmark = kwargs.get("benchmark")
+            return super().decide_action(*args, **kwargs)
+
+    engine = RecordingSignalEngine()
+
+    decision = _combine_timeframe_decisions(
+        "NVDA",
+        {"1m": snapshot},
+        {
+            "1m": make_decision("NVDA", timestamp, 0.82, 0.21, ("trend-aligned",)),
+        },
+        {"1m": 1.0, "5m": 0.0, "15m": 0.0},
+        {"1m": 1.0, "5m": 0.0, "15m": 0.0},
+        engine,
+        TradeState.FLAT,
+        bearish_benchmark,
+    )
+
+    assert decision.action is SignalAction.BUY_ALERT
+    assert engine.seen_benchmark is bearish_benchmark
 
 
 def test_combine_timeframe_decisions_normalizes_buy_and_sell_independently() -> None:

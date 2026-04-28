@@ -106,6 +106,8 @@ class SignalEngine:
             return SignalAction.SELL_ALERT, tuple(reasons)
 
         if state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= self.config.entry_threshold:
+            if snapshot is None:
+                return SignalAction.HOLD, ()
             if strong_exit_pressure or exit_score >= entry_score - self.config.entry_exit_margin:
                 return SignalAction.HOLD, ()
             if not self._long_entry_quality(snapshot, benchmark):
@@ -304,7 +306,9 @@ class SignalEngine:
             "stochastic_d": snapshot.stochastic_d,
         }
 
-    def _long_entry_quality(self, snapshot: IndicatorSnapshot, benchmark: IndicatorSnapshot | None) -> bool:
+    def _long_entry_quality(self, snapshot: IndicatorSnapshot | None, benchmark: IndicatorSnapshot | None) -> bool:
+        if snapshot is None:
+            return False
         checks: list[bool] = []
 
         if snapshot.ema_fast is not None and snapshot.ema_slow is not None:
@@ -327,4 +331,4 @@ class SignalEngine:
         if not checks:
             return False
 
-        return sum(1 for check in checks if check) >= max(4, int(len(checks) * 0.7))
+        return sum(1 for check in checks if check) >= max(1, int(len(checks) * 0.7))

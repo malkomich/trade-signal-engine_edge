@@ -4,26 +4,7 @@ from dataclasses import dataclass, field
 import os
 from pathlib import Path
 
-
-def default_signal_weights() -> dict[str, float]:
-    return {
-        "sma": 1.6,
-        "ema": 1.4,
-        "vwap": 1.1,
-        "rsi": 1.0,
-        "atr": 0.7,
-        "dm": 0.8,
-        "macd": 1.2,
-        "stochastic": 0.8,
-    }
-
-
-def default_timeframe_weights() -> dict[str, float]:
-    return {
-        "1m": 1.0,
-        "5m": 0.75,
-        "15m": 0.5,
-    }
+from .models import default_signal_weights, default_timeframe_weights
 
 
 @dataclass(slots=True)

@@ -116,6 +116,51 @@ def test_signal_engine_requires_long_entry_quality_even_with_a_good_score() -> N
     assert decision.action is SignalAction.HOLD
 
 
+def test_signal_engine_requires_long_entry_quality_without_exit_pressure() -> None:
+    snapshot = IndicatorSnapshot(
+        symbol="AMZN",
+        timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
+        close=100.1,
+        sma_fast=99.4,
+        sma_slow=100.2,
+        ema_fast=100.6,
+        ema_slow=99.8,
+        vwap=100.8,
+        rsi=44.0,
+        atr=1.05,
+        plus_di=21.0,
+        minus_di=18.0,
+        adx=18.0,
+        macd=0.25,
+        macd_signal=0.18,
+        macd_histogram=0.07,
+        stochastic_k=85.0,
+        stochastic_d=82.0,
+    )
+
+    decision = SignalEngine(SignalConfig(entry_threshold=0.2, exit_threshold=0.55)).evaluate(snapshot, TradeState.FLAT)
+
+    assert decision.action is SignalAction.HOLD
+
+
+def test_signal_engine_rejects_missing_snapshot_for_entry_action() -> None:
+    decision = SignalEngine().decide_action(0.9, 0.1, TradeState.FLAT, snapshot=None)
+
+    assert decision[0] is SignalAction.HOLD
+    assert decision[1] == ()
+
+
+def test_signal_engine_biases_are_covered_for_rsi_and_stochastic() -> None:
+    engine = SignalEngine()
+
+    assert engine._rsi_bias(72.0) == (-1.0, 1.0)
+    assert engine._rsi_bias(60.0) == (0.9, -0.3)
+    assert engine._rsi_bias(40.0) == (-0.4, 0.5)
+    assert engine._stochastic_bias(15.0, 10.0) == (0.9, -0.3)
+    assert engine._stochastic_bias(88.0, 85.0) == (-1.0, 1.0)
+    assert engine._stochastic_bias(40.0, 35.0) == (0.5, -0.1)
+
+
 def test_signal_engine_uses_exit_pressure_for_open_positions() -> None:
     snapshot = IndicatorSnapshot(
         symbol="TSLA",

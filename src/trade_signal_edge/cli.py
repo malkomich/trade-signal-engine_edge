@@ -410,6 +410,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             runtime.sell_timeframe_weights,
             signal_engine,
             state,
+            benchmark_snapshot,
         )
         if not market_open:
             if state is TradeState.ACCEPTED_OPEN:
@@ -555,6 +556,7 @@ def _combine_timeframe_decisions(
     sell_timeframe_weights: dict[str, float],
     signal_engine: SignalEngine,
     state: TradeState,
+    benchmark: IndicatorSnapshot | None = None,
 ) -> SignalDecision:
     entry_total = 0.0
     exit_total = 0.0
@@ -591,6 +593,7 @@ def _combine_timeframe_decisions(
         exit_score,
         state,
         primary_snapshot,
+        benchmark=benchmark,
         strong_exit_pressure=strong_exit_pressure,
     )
     reasons.extend(action_reasons)
