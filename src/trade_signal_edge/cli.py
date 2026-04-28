@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import time
@@ -12,7 +14,7 @@ from .api_client import ApiSessionClient
 from .config import load_runtime_config
 from .indicators import IndicatorCalculator
 from .ingestion import ingest_bars, resample_bars
-from .models import SignalAction, SignalConfig, SignalDecision, TradeState
+from .models import SignalAction, SignalConfig, SignalDecision, TIMEFRAME_KEYS, TradeState
 from .publisher import HttpDecisionPublisher
 from .providers import (
     ProviderName,
@@ -32,7 +34,9 @@ class ConfigError(RuntimeError):
     """Raised when the current runtime configuration cannot be used."""
 
 
-TIMEFRAME_KEYS = ("1m", "5m", "15m")
+logger = logging.getLogger(__name__)
+
+
 SIGNAL_WEIGHT_KEYS = (
     "sma",
     "ema",
@@ -91,6 +95,37 @@ def _parse_symbols(value: Any, fallback: tuple[str, ...]) -> tuple[str, ...]:
     if not symbols:
         return fallback
     return tuple(dict.fromkeys(symbols))
+
+
+def _build_timeframe_series(series: list[Any]) -> dict[str, list[Any]]:
+    return {
+        timeframe: (series if timeframe == "1m" else resample_bars(series, int(timeframe[:-1])))
+        for timeframe in TIMEFRAME_KEYS
+    }
+
+
+def _publish_market_snapshots(
+    session_client: ApiSessionClient,
+    session_id: str,
+    symbol: str,
+    timeframe_payloads: list[tuple[str, dict[str, object]]],
+    errors: list[str],
+) -> None:
+    if not timeframe_payloads:
+        return
+
+    max_workers = min(len(timeframe_payloads), 4)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_timeframe = {
+            executor.submit(session_client.publish_market_snapshot, session_id, payload): timeframe
+            for timeframe, payload in timeframe_payloads
+        }
+        for future in as_completed(future_to_timeframe):
+            timeframe = future_to_timeframe[future]
+            try:
+                future.result()
+            except Exception as error:
+                errors.append(f"{symbol} {timeframe}: market snapshot publish failed: {error}")
 
 
 def _parse_profile_map(value: Any) -> dict[str, float]:
@@ -350,11 +385,9 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         print(json.dumps(report, indent=2))
         return report
     benchmark_snapshot, benchmark_series = benchmark_payload
-    benchmark_series_by_timeframe = {
-        "1m": benchmark_series,
-        "5m": resample_bars(benchmark_series, 5),
-        "15m": resample_bars(benchmark_series, 15),
-    }
+    # The benchmark is evaluated across the same timeframe ladder as symbols so its trend context
+    # stays aligned with the symbol-side decision path, even though only the 1m payload is published.
+    benchmark_series_by_timeframe = _build_timeframe_series(benchmark_series)
     benchmark_snapshots_by_timeframe = {
         timeframe: indicator_calculator.compute(series)
         for timeframe, series in benchmark_series_by_timeframe.items()
@@ -367,6 +400,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         benchmark_market_payload = _build_market_snapshot_payload(
             session_id=runtime.session_id,
             symbol=runtime.benchmark_symbol,
+            timeframe="1m",
             bars_series=benchmark_series,
             snapshot=benchmark_snapshot,
             entry_score=0.0,
@@ -392,16 +426,15 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             continue
 
         bars_series = ingest_bars(history)
-        timeframe_series = {
-            "1m": bars_series,
-            "5m": resample_bars(bars_series, 5),
-            "15m": resample_bars(bars_series, 15),
-        }
-        snapshots_by_timeframe = {
-            timeframe: indicator_calculator.compute(series)
-            for timeframe, series in timeframe_series.items()
-            if series
-        }
+        timeframe_series = _build_timeframe_series(bars_series)
+        snapshots_by_timeframe: dict[str, Any] = {}
+        missing_timeframes: list[str] = []
+        for timeframe, series in timeframe_series.items():
+            if not series:
+                missing_timeframes.append(timeframe)
+                logger.debug("%s: empty series for timeframe %s", current_symbol, timeframe)
+                continue
+            snapshots_by_timeframe[timeframe] = indicator_calculator.compute(series)
         snapshot = snapshots_by_timeframe.get("1m")
         if snapshot is None:
             errors.append(f"{current_symbol}: missing 1m snapshot")
@@ -452,25 +485,37 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             except Exception as error:
                 errors.append(f"{current_symbol}: decision publish failed: {error}")
         if session_client is not None:
-            try:
-                session_client.publish_market_snapshot(
-                    runtime.session_id,
-                    _build_market_snapshot_payload(
-                        session_id=runtime.session_id,
-                        symbol=current_symbol,
-                        bars_series=bars_series,
-                        snapshot=snapshot,
-                        entry_score=decision.entry_score,
-                        exit_score=decision.exit_score,
-                        decision_action=decision.action.value,
-                        next_state=next_state.value,
-                        benchmark_symbol=runtime.benchmark_symbol,
-                        regime=decision.reasons[-1] if decision.reasons else "live market session",
-                        window_id=current_window_id,
-                    ),
+            timeframe_payloads: list[tuple[str, dict[str, object]]] = []
+            for timeframe, timeframe_snapshot in snapshots_by_timeframe.items():
+                timeframe_bars = timeframe_series.get(timeframe)
+                if not timeframe_bars:
+                    continue
+                timeframe_payloads.append(
+                    (
+                        timeframe,
+                        _build_market_snapshot_payload(
+                            session_id=runtime.session_id,
+                            symbol=current_symbol,
+                            timeframe=timeframe,
+                            bars_series=timeframe_bars,
+                            snapshot=timeframe_snapshot,
+                            entry_score=decision.entry_score,
+                            exit_score=decision.exit_score,
+                            decision_action=decision.action.value,
+                            next_state=next_state.value,
+                            benchmark_symbol=runtime.benchmark_symbol,
+                            regime=decision.reasons[-1] if decision.reasons else "live market session",
+                            window_id=current_window_id,
+                        ),
+                    )
                 )
-            except Exception as error:
-                errors.append(f"{current_symbol}: market snapshot publish failed: {error}")
+            _publish_market_snapshots(
+                session_client,
+                runtime.session_id,
+                current_symbol,
+                timeframe_payloads,
+                errors,
+            )
         decisions.append(
             {
                 "symbol": current_symbol,
@@ -478,6 +523,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
                 "decision": asdict(decision),
                 "next_state": next_state.value,
                 "timeframes": {timeframe: asdict(item) for timeframe, item in timeframe_decisions.items()},
+                "missing_timeframes": missing_timeframes,
             }
         )
 
@@ -627,6 +673,7 @@ def _combine_timeframe_decisions(
 def _build_market_snapshot_payload(
     session_id: str,
     symbol: str,
+    timeframe: str,
     bars_series,
     snapshot,
     entry_score: float,
@@ -643,6 +690,7 @@ def _build_market_snapshot_payload(
         "session_id": session_id,
         "window_id": window_id,
         "symbol": symbol,
+        "timeframe": timeframe,
         "timestamp": snapshot.timestamp.isoformat(),
         "created_at": snapshot.timestamp.isoformat(),
         "updated_at": snapshot.timestamp.isoformat(),

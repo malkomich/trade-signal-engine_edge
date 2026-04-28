@@ -7,7 +7,7 @@ from trade_signal_edge.signal_engine import SignalEngine
 def test_signal_engine_raises_buy_alert_when_trend_is_aligned() -> None:
     snapshot = IndicatorSnapshot(
         symbol="NVDA",
-        timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
         close=102.0,
         sma_fast=101.5,
         sma_slow=100.2,
@@ -63,7 +63,7 @@ def test_signal_engine_vetoes_entries_when_exit_pressure_is_high() -> None:
 def test_signal_engine_uses_configured_entry_exit_margin() -> None:
     snapshot = IndicatorSnapshot(
         symbol="AAPL",
-        timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
         close=190.0,
         sma_fast=189.5,
         sma_slow=188.8,
@@ -198,17 +198,45 @@ def test_signal_engine_uses_exit_pressure_for_open_positions() -> None:
     assert "exit-pressure" in decision.reasons
 
 
+def test_signal_engine_penalizes_opening_session_risk_for_entries() -> None:
+    snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=datetime(2026, 4, 20, 13, 35, tzinfo=timezone.utc),
+        close=102.0,
+        sma_fast=101.5,
+        sma_slow=100.2,
+        ema_fast=101.8,
+        ema_slow=100.6,
+        vwap=100.8,
+        rsi=62.0,
+        atr=1.25,
+        plus_di=28.0,
+        minus_di=14.0,
+        adx=26.0,
+        macd=1.1,
+        macd_signal=0.85,
+        macd_histogram=0.25,
+        stochastic_k=34.0,
+        stochastic_d=28.0,
+    )
+
+    decision = SignalEngine().evaluate(snapshot, TradeState.FLAT)
+
+    assert decision.action is SignalAction.HOLD
+    assert decision.entry_score < 0.7
+
+
 def test_signal_engine_accounts_for_benchmark_alignment() -> None:
     benchmark = IndicatorSnapshot(
         symbol="QQQ",
-        timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
         close=99.8,
         ema_fast=100.4,
         ema_slow=99.6,
     )
     snapshot = IndicatorSnapshot(
         symbol="AAPL",
-        timestamp=datetime(2026, 4, 20, 13, 30, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
         close=103.5,
         sma_fast=103.0,
         sma_slow=102.0,

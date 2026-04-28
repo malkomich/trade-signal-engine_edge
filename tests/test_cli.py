@@ -3,7 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
-from trade_signal_edge.cli import _build_market_snapshot_payload, _combine_timeframe_decisions, _resolve_window_id_after_publish
+from trade_signal_edge.cli import (
+    _build_market_snapshot_payload,
+    _combine_timeframe_decisions,
+    _publish_market_snapshots,
+    _resolve_window_id_after_publish,
+)
 from trade_signal_edge.models import Bar, IndicatorSnapshot, SignalAction, SignalDecision, SignalConfig, TradeState
 from trade_signal_edge.signal_engine import SignalEngine
 
@@ -283,6 +288,7 @@ def test_build_market_snapshot_payload_omits_hold_signal_action() -> None:
     payload = _build_market_snapshot_payload(
         session_id="session-1",
         symbol="AAPL",
+        timeframe="1m",
         bars_series=[bar],
         snapshot=snapshot,
         entry_score=0.42,
@@ -295,3 +301,20 @@ def test_build_market_snapshot_payload_omits_hold_signal_action() -> None:
     )
 
     assert payload["signal_action"] is None
+    assert payload["timeframe"] == "1m"
+
+
+def test_publish_market_snapshots_publishes_each_timeframe_once() -> None:
+    session_client = Mock()
+    payloads = [
+        ("1m", {"timeframe": "1m"}),
+        ("5m", {"timeframe": "5m"}),
+        ("15m", {"timeframe": "15m"}),
+    ]
+    errors: list[str] = []
+
+    _publish_market_snapshots(session_client, "session-1", "AAPL", payloads, errors)
+
+    assert errors == []
+    assert session_client.publish_market_snapshot.call_count == 3
+    assert session_client.publish_market_snapshot.call_args_list[0].args[0] == "session-1"

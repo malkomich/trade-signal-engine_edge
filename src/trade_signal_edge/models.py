@@ -63,27 +63,29 @@ class IndicatorSnapshot:
 
 def default_signal_weights() -> dict[str, float]:
     return {
-        "sma": 0.8,
+        "sma": 0.6,
         "ema": 1.0,
         "vwap": 1.2,
-        "bollinger": 0.9,
+        "bollinger": 0.7,
         "rsi": 0.9,
-        "atr": 0.4,
-        "dm": 0.5,
+        "atr": 0.5,
+        "dm": 0.6,
         "macd": 1.0,
         "stochastic": 0.5,
-        "obv": 0.8,
-        "relative_volume": 1.1,
-        "volume_profile": 0.7,
+        "obv": 0.9,
+        "relative_volume": 1.2,
+        "volume_profile": 0.8,
     }
 
 
 def default_timeframe_weights() -> dict[str, float]:
-    return {
-        "1m": 1.0,
-        "5m": 0.75,
-        "15m": 0.5,
-    }
+    return dict(
+        zip(
+            TIMEFRAME_KEYS,
+            (1.0, 0.85, 0.75, 0.6, 0.45, 0.3),
+            strict=True,
+        )
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,3 +120,4 @@ class TradeWindow:
     opened_at: datetime
     closed_at: Optional[datetime] = None
     status: TradeState = TradeState.FLAT
+TIMEFRAME_KEYS = ("1m", "5m", "10m", "15m", "30m", "60m")
