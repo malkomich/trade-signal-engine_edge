@@ -225,8 +225,8 @@ def test_combine_timeframe_decisions_uses_exit_pressure_for_open_positions() -> 
         "TSLA",
         {"1m": primary_snapshot, "5m": exit_pressure_snapshot},
         {
-            "1m": make_decision("TSLA", timestamp, 0.31, 0.41, ("1m:trend-pressure",)),
-            "5m": make_decision("TSLA", timestamp, 0.28, 0.38, ("5m:trend-pressure",)),
+            "1m": make_decision("TSLA", timestamp, 0.31, 0.72, ("1m:trend-pressure",)),
+            "5m": make_decision("TSLA", timestamp, 0.28, 0.74, ("5m:trend-pressure",)),
         },
         {"1m": 1.0, "5m": 0.8, "15m": 0.0},
         {"1m": 1.0, "5m": 0.8, "15m": 0.0},
