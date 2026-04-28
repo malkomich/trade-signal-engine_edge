@@ -68,7 +68,7 @@ class IndicatorCalculator:
         ema_slow = close.ewm(span=self.slow_ema, adjust=False).mean()
 
         bollinger_middle = close.rolling(self.bollinger_period).mean()
-        bollinger_std = close.rolling(self.bollinger_period).std(ddof=0)
+        bollinger_std = close.rolling(self.bollinger_period).std(ddof=1)
         bollinger_upper = bollinger_middle + (self.bollinger_stddev * bollinger_std)
         bollinger_lower = bollinger_middle - (self.bollinger_stddev * bollinger_std)
 
@@ -85,29 +85,26 @@ class IndicatorCalculator:
         relative_volume = relative_volume.replace([np.inf, -np.inf], np.nan)
 
         volume_profile = pd.Series(np.nan, index=frame.index)
-        profile_window = max(self.volume_profile_period, self.bollinger_period)
-        for index in range(len(frame)):
-            start = max(0, index - profile_window + 1)
-            window = frame.iloc[start : index + 1]
-            if window.empty:
-                continue
+        profile_window = self.volume_profile_period
+        if profile_window <= 0:
+            profile_window = 1
+        window = frame.iloc[max(0, len(frame) - profile_window) : len(frame)]
+        if not window.empty:
             price_low = float(window["low"].min())
             price_high = float(window["high"].max())
-            if not np.isfinite(price_low) or not np.isfinite(price_high) or price_high <= price_low:
-                continue
-            histogram, bin_edges = np.histogram(
-                window["close"].astype(float),
-                bins=max(2, self.volume_profile_bins),
-                range=(price_low, price_high),
-                weights=window["volume"].astype(float),
-            )
-            total_volume = float(histogram.sum())
-            if total_volume <= 0:
-                continue
-            last_close = float(window["close"].iloc[-1])
-            bin_index = np.searchsorted(bin_edges, last_close, side="right") - 1
-            bin_index = int(np.clip(bin_index, 0, len(histogram) - 1))
-            volume_profile.iloc[index] = histogram[bin_index] / total_volume
+            if np.isfinite(price_low) and np.isfinite(price_high) and price_high > price_low:
+                histogram, bin_edges = np.histogram(
+                    window["close"].astype(float),
+                    bins=max(2, self.volume_profile_bins),
+                    range=(price_low, price_high),
+                    weights=window["volume"].astype(float),
+                )
+                total_volume = float(histogram.sum())
+                if total_volume > 0:
+                    last_close = float(window["close"].iloc[-1])
+                    bin_index = np.searchsorted(bin_edges, last_close, side="right") - 1
+                    bin_index = int(np.clip(bin_index, 0, len(histogram) - 1))
+                    volume_profile.iloc[-1] = histogram[bin_index] / total_volume
 
         delta = close.diff()
         gain = delta.clip(lower=0)

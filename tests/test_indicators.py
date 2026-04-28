@@ -33,3 +33,10 @@ def test_indicator_calculator_produces_snapshot() -> None:
     assert snapshot.ema_fast is not None
     assert snapshot.macd_histogram is not None
 
+
+def test_indicator_calculator_uses_independent_volume_profile_window() -> None:
+    calculator = IndicatorCalculator(bollinger_period=50, volume_profile_period=5)
+    snapshot = calculator.compute(build_bars(12))
+
+    assert snapshot.volume_profile is not None
+    assert 0.0 <= snapshot.volume_profile <= 1.0

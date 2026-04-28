@@ -52,7 +52,7 @@ class SignalEngine:
         dm_entry, dm_exit = self._dm_bias(snapshot.plus_di, snapshot.minus_di, snapshot.adx)
         macd_entry, macd_exit = self._macd_bias(snapshot.macd, snapshot.macd_signal, snapshot.macd_histogram)
         stochastic_entry, stochastic_exit = self._stochastic_bias(snapshot.stochastic_k, snapshot.stochastic_d)
-        obv_entry, obv_exit = self._obv_bias(snapshot.obv)
+        obv_entry, obv_exit = self._obv_bias(snapshot.obv, snapshot.relative_volume, snapshot.volume_profile)
         relative_volume_entry, relative_volume_exit = self._relative_volume_bias(snapshot.relative_volume)
         volume_profile_entry, volume_profile_exit = self._volume_profile_bias(snapshot.volume_profile)
         benchmark_entry, benchmark_exit, benchmark_reason = self._benchmark_bias(snapshot, benchmark)
@@ -140,7 +140,12 @@ class SignalEngine:
         if snapshot.vwap is not None and snapshot.macd_histogram is not None:
             if snapshot.close < snapshot.vwap and snapshot.macd_histogram < 0:
                 return True
-        if snapshot.bollinger_middle is not None and snapshot.close < snapshot.bollinger_middle:
+        if (
+            snapshot.bollinger_middle is not None
+            and snapshot.macd_histogram is not None
+            and snapshot.close < snapshot.bollinger_middle
+            and snapshot.macd_histogram < 0
+        ):
             return True
         if snapshot.ema_fast is not None and snapshot.macd_histogram is not None:
             if snapshot.close < snapshot.ema_fast and snapshot.macd_histogram < 0:
@@ -148,7 +153,7 @@ class SignalEngine:
         if snapshot.plus_di is not None and snapshot.minus_di is not None and snapshot.adx is not None:
             if snapshot.adx >= 20 and snapshot.minus_di > snapshot.plus_di:
                 return True
-        if snapshot.relative_volume is not None and snapshot.relative_volume < 0.9:
+        if snapshot.relative_volume is not None and snapshot.relative_volume < 0.7:
             return True
         if snapshot.volume_profile is not None and snapshot.volume_profile < 0.12:
             return True
@@ -234,12 +239,17 @@ class SignalEngine:
             return -0.9, 1.0
         return -0.3, 0.3
 
-    def _obv_bias(self, obv: float | None) -> tuple[float, float]:
-        if obv is None or not isfinite(obv):
+    def _obv_bias(
+        self,
+        _obv: float | None,
+        relative_volume: float | None,
+        volume_profile: float | None,
+    ) -> tuple[float, float]:
+        if _obv is None or not isfinite(_obv):
             return 0.0, 0.0
-        if obv > 0:
+        if relative_volume is not None and relative_volume >= 1.1 and volume_profile is not None and volume_profile >= 0.18:
             return 0.6, -0.1
-        if obv < 0:
+        if relative_volume is not None and relative_volume < 0.9 and (volume_profile is None or volume_profile < 0.15):
             return -0.5, 0.7
         return 0.1, 0.1
 

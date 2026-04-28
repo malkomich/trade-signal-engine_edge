@@ -638,6 +638,7 @@ def _build_market_snapshot_payload(
     window_id: str,
 ) -> dict[str, object]:
     latest_bar = bars_series[-1]
+    # This payload is part of the RTDB contract consumed by admin and analytics.
     payload = {
         "session_id": session_id,
         "window_id": window_id,
