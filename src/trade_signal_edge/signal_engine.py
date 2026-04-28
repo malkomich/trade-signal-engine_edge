@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from math import isfinite
+from zoneinfo import ZoneInfo
 
 from .models import IndicatorSnapshot, SignalAction, SignalConfig, SignalDecision, TradeState
+
+try:
+    NEW_YORK_TIMEZONE = ZoneInfo("America/New_York")
+except Exception:  # pragma: no cover - fallback for stripped tzdata environments
+    NEW_YORK_TIMEZONE = timezone.utc
 
 
 def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
@@ -57,6 +64,7 @@ class SignalEngine:
         volume_profile_entry, volume_profile_exit = self._volume_profile_bias(snapshot.volume_profile)
         benchmark_entry, benchmark_exit, benchmark_reason = self._benchmark_bias(snapshot, benchmark)
         profile_entry, profile_exit, profile_reason = self._optimization_bias(snapshot)
+        risk_score = self._risk_score(snapshot)
 
         add("sma", sma_bias, -sma_bias)
         add("ema", ema_bias, -ema_bias)
@@ -80,8 +88,8 @@ class SignalEngine:
         # The benchmark term is capped separately in _benchmark_bias, so normalize each side with its own bound.
         benchmark_entry_weight = 0.575
         benchmark_exit_weight = 0.425
-        entry_score = _score_from_signal(entry_raw, buy_max_weight + benchmark_entry_weight)
-        exit_score = _score_from_signal(exit_raw, sell_max_weight + benchmark_exit_weight)
+        entry_score = _clamp(_score_from_signal(entry_raw, buy_max_weight + benchmark_entry_weight) * (1.0 - (risk_score * 0.25)))
+        exit_score = _clamp(_score_from_signal(exit_raw, sell_max_weight + benchmark_exit_weight) + (risk_score * 0.35))
         action, action_reasons = self.decide_action(entry_score, exit_score, state, snapshot, benchmark)
         reasons.extend(action_reasons)
 
@@ -318,6 +326,96 @@ class SignalEngine:
         if sma_slow is not None and sma_slow > 0:
             return (close / sma_slow) - 1.0
         return 0.0
+
+    def _risk_score(self, snapshot: IndicatorSnapshot) -> float:
+        volatility_risk = self._volatility_risk(snapshot.atr, snapshot.close)
+        volatility_spike_risk = self._volatility_spike_risk(snapshot.atr, snapshot.close, snapshot.relative_volume)
+        session_risk = self._session_risk(snapshot.timestamp)
+        microstructure_risk = self._microstructure_risk(snapshot)
+        return _clamp(
+            (0.35 * volatility_risk)
+            + (0.25 * volatility_spike_risk)
+            + (0.20 * session_risk)
+            + (0.20 * microstructure_risk)
+        )
+
+    def _volatility_risk(self, atr: float | None, close: float) -> float:
+        if atr is None or close <= 0 or not isfinite(atr):
+            return 0.5
+        atr_ratio = atr / close
+        if atr_ratio >= 0.04:
+            return 1.0
+        if atr_ratio >= 0.03:
+            return 0.85
+        if atr_ratio >= 0.02:
+            return 0.65
+        if atr_ratio >= 0.012:
+            return 0.45
+        return 0.25
+
+    def _volatility_spike_risk(self, atr: float | None, close: float, relative_volume: float | None) -> float:
+        if atr is None or close <= 0 or not isfinite(atr):
+            return 0.5
+        atr_ratio = atr / close
+        score = 0.0
+        if atr_ratio >= 0.04:
+            score += 0.65
+        elif atr_ratio >= 0.03:
+            score += 0.5
+        elif atr_ratio >= 0.02:
+            score += 0.35
+        elif atr_ratio >= 0.012:
+            score += 0.2
+        else:
+            score += 0.1
+        if relative_volume is not None and isfinite(relative_volume):
+            if relative_volume >= 2.5:
+                score += 0.35
+            elif relative_volume >= 1.8:
+                score += 0.25
+            elif relative_volume <= 0.7:
+                score += 0.3
+            elif relative_volume <= 0.9:
+                score += 0.15
+        return _clamp(score)
+
+    def _session_risk(self, timestamp: datetime) -> float:
+        local_time = timestamp.astimezone(NEW_YORK_TIMEZONE)
+        minute_of_day = local_time.hour * 60 + local_time.minute
+        market_open = 9 * 60 + 30
+        if minute_of_day < market_open:
+            return 0.0
+        if minute_of_day < 10 * 60:
+            return 0.95
+        if minute_of_day < 10 * 60 + 30:
+            return 0.85
+        if minute_of_day < 11 * 60 + 30:
+            return 0.65
+        if minute_of_day < 14 * 60 + 30:
+            return 0.4
+        if minute_of_day < 15 * 60 + 30:
+            return 0.55
+        return 0.75
+
+    def _microstructure_risk(self, snapshot: IndicatorSnapshot) -> float:
+        score = 0.0
+        if snapshot.relative_volume is not None and isfinite(snapshot.relative_volume):
+            if snapshot.relative_volume <= 0.8:
+                score += 0.25
+            elif snapshot.relative_volume >= 2.0:
+                score += 0.2
+        if snapshot.volume_profile is not None and isfinite(snapshot.volume_profile):
+            if snapshot.volume_profile < 0.15:
+                score += 0.35
+            elif snapshot.volume_profile < 0.25:
+                score += 0.15
+        if snapshot.vwap is not None and snapshot.macd_histogram is not None:
+            if snapshot.close < snapshot.vwap and snapshot.macd_histogram < 0:
+                score += 0.2
+        if snapshot.plus_di is not None and snapshot.minus_di is not None and snapshot.adx is not None:
+            if snapshot.adx >= 20 and snapshot.minus_di > snapshot.plus_di:
+                score += 0.2
+        return _clamp(score)
 
     def _optimization_bias(self, snapshot: IndicatorSnapshot) -> tuple[float, float, str | None]:
         entry_profile = dict(self.config.entry_profile)
