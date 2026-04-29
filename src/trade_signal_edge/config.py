@@ -57,7 +57,7 @@ def load_runtime_config() -> RuntimeConfig:
         log_level=_parse_log_level(os.getenv("EDGE_LOG_LEVEL"), defaults.log_level),
         metrics_enabled=_parse_bool(os.getenv("EDGE_METRICS_ENABLED")),
         secret_source=(os.getenv("EDGE_SECRET_SOURCE", defaults.secret_source) or defaults.secret_source).strip().lower(),
-        entry_gate_cap=float(os.getenv("EDGE_ENTRY_GATE_CAP", str(defaults.entry_gate_cap))),
+        entry_gate_cap=_parse_float_env("EDGE_ENTRY_GATE_CAP", defaults.entry_gate_cap),
         buy_signal_weights=dict(defaults.buy_signal_weights),
         sell_signal_weights=dict(defaults.sell_signal_weights),
         buy_timeframe_weights=dict(defaults.buy_timeframe_weights),
@@ -107,6 +107,13 @@ def _read_optional_value(value_env: str, file_env: str) -> str | None:
         return None
     candidate = value.strip()
     return candidate or None
+
+
+def _parse_float_env(name: str, fallback: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return fallback
+    return float(raw)
 
 
 def _parse_symbols(value: str | None) -> tuple[str, ...]:

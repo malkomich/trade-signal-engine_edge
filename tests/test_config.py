@@ -135,6 +135,22 @@ def test_load_runtime_config_blank_benchmark_and_session_fallback_to_defaults(mo
     assert runtime.session_id == "nasdaq-live"
 
 
+def test_load_runtime_config_empty_entry_gate_cap_uses_default(monkeypatch) -> None:
+    monkeypatch.setenv("EDGE_ENTRY_GATE_CAP", "")
+
+    runtime = load_runtime_config()
+
+    assert runtime.entry_gate_cap == 0.56
+
+
+def test_load_runtime_config_valid_entry_gate_cap(monkeypatch) -> None:
+    monkeypatch.setenv("EDGE_ENTRY_GATE_CAP", "0.75")
+
+    runtime = load_runtime_config()
+
+    assert runtime.entry_gate_cap == 0.75
+
+
 def test_load_runtime_config_legacy_symbol_env_accepts_comma_separated_values(monkeypatch) -> None:
     monkeypatch.delenv("EDGE_SYMBOLS", raising=False)
     monkeypatch.setenv("EDGE_SYMBOL", "MSFT, NVDA, MSFT")
