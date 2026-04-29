@@ -13,7 +13,8 @@ except Exception:  # pragma: no cover - fallback for stripped tzdata environment
     NEW_YORK_TIMEZONE = timezone.utc
 
 SELL_PRESSURE_MAX_SCORE = 1.3
-BUY_ENTRY_FLOOR = 0.52
+BUY_ENTRY_FLOOR = 0.5
+BUY_ENTRY_GATE = 0.56
 
 
 def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
@@ -153,10 +154,16 @@ class SignalEngine:
             reasons.append("exit-qualified")
             return SignalAction.SELL_ALERT, tuple(reasons), None
 
-        if state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= max(
-            self.config.entry_threshold,
-            BUY_ENTRY_FLOOR,
-        ):
+        entry_gate = min(self.config.entry_threshold, BUY_ENTRY_GATE)
+        if session_risk is not None:
+            if session_risk >= 0.95:
+                entry_gate += 0.15
+            elif session_risk >= 0.85:
+                entry_gate += 0.08
+            elif session_risk >= 0.7:
+                entry_gate += 0.03
+        entry_gate = max(BUY_ENTRY_FLOOR, entry_gate)
+        if state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= entry_gate:
             if snapshot is None:
                 return SignalAction.HOLD, (), None
             quality_score = self._long_entry_quality_score(snapshot, benchmark)
