@@ -105,10 +105,10 @@ def test_signal_engine_uses_configured_entry_exit_margin() -> None:
 @pytest.mark.parametrize(
     ("session_risk", "entry_score", "expected_action"),
     [
-        (0.95, 0.71, SignalAction.HOLD),
-        (0.95, 0.73, SignalAction.BUY_ALERT),
-        (0.85, 0.63, SignalAction.HOLD),
-        (0.85, 0.65, SignalAction.BUY_ALERT),
+        (0.95, 0.63, SignalAction.HOLD),
+        (0.95, 0.69, SignalAction.BUY_ALERT),
+        (0.85, 0.57, SignalAction.HOLD),
+        (0.85, 0.63, SignalAction.BUY_ALERT),
     ],
 )
 def test_signal_engine_applies_session_risk_to_entry_gate_boundaries(
@@ -188,8 +188,8 @@ def test_signal_engine_derives_session_risk_from_snapshot_timestamp() -> None:
         stochastic_d=28.0,
     )
 
-    opening_decision = engine.decide_action(0.71, 0.1, TradeState.FLAT, snapshot=opening_snapshot)
-    later_decision = engine.decide_action(0.71, 0.1, TradeState.FLAT, snapshot=later_snapshot)
+    opening_decision = engine.decide_action(0.63, 0.1, TradeState.FLAT, snapshot=opening_snapshot)
+    later_decision = engine.decide_action(0.63, 0.1, TradeState.FLAT, snapshot=later_snapshot)
 
     assert opening_decision[0] is SignalAction.HOLD
     assert later_decision[0] is SignalAction.BUY_ALERT
@@ -367,42 +367,48 @@ def test_signal_engine_penalizes_opening_session_risk_for_entries() -> None:
     opening_snapshot = IndicatorSnapshot(
         symbol="NVDA",
         timestamp=datetime(2026, 4, 20, 13, 35, tzinfo=timezone.utc),
-        close=102.0,
-        sma_fast=101.5,
+        close=100.4,
+        sma_fast=100.5,
         sma_slow=100.2,
-        ema_fast=101.8,
-        ema_slow=100.6,
-        vwap=100.8,
-        rsi=62.0,
+        ema_fast=100.7,
+        ema_slow=100.4,
+        vwap=100.7,
+        rsi=49.0,
         atr=1.25,
-        plus_di=28.0,
-        minus_di=14.0,
-        adx=26.0,
-        macd=1.1,
-        macd_signal=0.85,
-        macd_histogram=0.25,
-        stochastic_k=34.0,
-        stochastic_d=28.0,
+        plus_di=24.0,
+        minus_di=18.0,
+        adx=22.0,
+        macd=0.4,
+        macd_signal=0.35,
+        macd_histogram=0.05,
+        stochastic_k=42.0,
+        stochastic_d=39.0,
+        obv=None,
+        relative_volume=1.0,
+        volume_profile=0.16,
     )
     late_snapshot = IndicatorSnapshot(
         symbol="NVDA",
         timestamp=datetime(2026, 4, 20, 17, 35, tzinfo=timezone.utc),
-        close=102.0,
-        sma_fast=101.5,
+        close=100.4,
+        sma_fast=100.5,
         sma_slow=100.2,
-        ema_fast=101.8,
-        ema_slow=100.6,
-        vwap=100.8,
-        rsi=62.0,
+        ema_fast=100.7,
+        ema_slow=100.4,
+        vwap=100.7,
+        rsi=49.0,
         atr=1.25,
-        plus_di=28.0,
-        minus_di=14.0,
-        adx=26.0,
-        macd=1.1,
-        macd_signal=0.85,
-        macd_histogram=0.25,
-        stochastic_k=34.0,
-        stochastic_d=28.0,
+        plus_di=24.0,
+        minus_di=18.0,
+        adx=22.0,
+        macd=0.4,
+        macd_signal=0.35,
+        macd_histogram=0.05,
+        stochastic_k=42.0,
+        stochastic_d=39.0,
+        obv=None,
+        relative_volume=1.0,
+        volume_profile=0.16,
     )
 
     opening_decision = engine.evaluate(opening_snapshot, TradeState.FLAT)

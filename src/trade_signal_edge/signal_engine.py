@@ -14,28 +14,28 @@ except Exception:  # pragma: no cover - fallback for stripped tzdata environment
 
 SELL_PRESSURE_MAX_SCORE = 1.3
 BUY_ENTRY_FLOOR = 0.5
-DEFAULT_ENTRY_GATE_CAP = 0.56
-ENTRY_SCORE_RISK_ADJUSTMENT = 0.17
-ENTRY_SCORE_SELL_PRESSURE_ADJUSTMENT = 0.06
+DEFAULT_ENTRY_GATE_CAP = 0.52
+ENTRY_SCORE_RISK_ADJUSTMENT = 0.14
+ENTRY_SCORE_SELL_PRESSURE_ADJUSTMENT = 0.05
 OPENING_SESSION_RISK_HIGH = 0.95
 OPENING_SESSION_RISK_MEDIUM = 0.85
 OPENING_SESSION_RISK_LOW = 0.7
-OPENING_SESSION_PENALTY_HIGH = 0.16
-OPENING_SESSION_PENALTY_MEDIUM = 0.08
-OPENING_SESSION_PENALTY_LOW = 0.04
+OPENING_SESSION_PENALTY_HIGH = 0.12
+OPENING_SESSION_PENALTY_MEDIUM = 0.06
+OPENING_SESSION_PENALTY_LOW = 0.03
 ENTRY_MARGIN_BASE = 0.04
 ENTRY_MARGIN_STRONG_EXIT_BONUS = 0.04
-BUY_TIER_CONVICTION_ENTRY = 0.78
-BUY_TIER_CONVICTION_QUALITY = 0.72
+BUY_TIER_CONVICTION_ENTRY = 0.76
+BUY_TIER_CONVICTION_QUALITY = 0.7
 BUY_TIER_CONVICTION_MAX_RISK = 0.6
-BUY_TIER_BALANCED_ENTRY = 0.7
-BUY_TIER_BALANCED_QUALITY = 0.6
+BUY_TIER_BALANCED_ENTRY = 0.68
+BUY_TIER_BALANCED_QUALITY = 0.58
 BUY_TIER_BALANCED_MAX_RISK = 0.74
-BUY_TIER_OPPORTUNISTIC_ENTRY = 0.58
-BUY_TIER_OPPORTUNISTIC_QUALITY = 0.5
+BUY_TIER_OPPORTUNISTIC_ENTRY = 0.56
+BUY_TIER_OPPORTUNISTIC_QUALITY = 0.48
 BUY_TIER_OPPORTUNISTIC_MAX_RISK = 0.86
-BUY_TIER_SPECULATIVE_ENTRY = 0.52
-BUY_TIER_SPECULATIVE_QUALITY = 0.42
+BUY_TIER_SPECULATIVE_ENTRY = 0.5
+BUY_TIER_SPECULATIVE_QUALITY = 0.4
 BUY_TIER_SPECULATIVE_MAX_RISK = 0.94
 
 
@@ -610,13 +610,13 @@ class SignalEngine:
         if snapshot.plus_di is not None and snapshot.minus_di is not None:
             checks.append(snapshot.plus_di >= snapshot.minus_di)
         if snapshot.rsi is not None:
-            checks.append(50 <= snapshot.rsi < 68)
+            checks.append(48 <= snapshot.rsi < 70)
         if snapshot.stochastic_k is not None and snapshot.stochastic_d is not None:
-            checks.append(snapshot.stochastic_k >= snapshot.stochastic_d and snapshot.stochastic_k < 80)
+            checks.append(snapshot.stochastic_k >= snapshot.stochastic_d and snapshot.stochastic_k < 85)
         if snapshot.relative_volume is not None:
-            checks.append(snapshot.relative_volume >= 1.05)
+            checks.append(snapshot.relative_volume >= 0.95)
         if snapshot.volume_profile is not None:
-            checks.append(snapshot.volume_profile >= 0.18)
+            checks.append(snapshot.volume_profile >= 0.15)
         if snapshot.obv is not None:
             checks.append(snapshot.obv >= 0)
         if benchmark is not None and benchmark.ema_fast is not None and benchmark.ema_slow is not None:
