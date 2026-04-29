@@ -227,6 +227,7 @@ def _runtime_from_session_config(runtime, payload: object):
         entry_threshold=entry_threshold,
         exit_threshold=exit_threshold,
         entry_exit_margin=entry_exit_margin,
+        entry_gate_cap=_parse_float(field_map.get("entry_gate_cap"), runtime.entry_gate_cap),
         buy_signal_weights=buy_signal_weights,
         sell_signal_weights=sell_signal_weights,
         buy_timeframe_weights=buy_timeframe_weights,
@@ -360,6 +361,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             exit_profile=runtime.exit_profile,
             optimizer_learning_rate=runtime.optimizer_learning_rate,
             optimizer_bias_cap=runtime.optimizer_bias_cap,
+            entry_gate_cap=runtime.entry_gate_cap,
         )
     )
     open_windows: dict[str, str] = {}
