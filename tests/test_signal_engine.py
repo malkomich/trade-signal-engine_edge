@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from trade_signal_edge.models import IndicatorSnapshot, SignalAction, SignalConfig, SignalTier, TradeState
 from trade_signal_edge.signal_engine import SignalEngine
 
@@ -29,6 +31,7 @@ def test_signal_engine_raises_buy_alert_when_trend_is_aligned() -> None:
     decision = SignalEngine().evaluate(snapshot, TradeState.FLAT)
 
     assert decision.action is SignalAction.BUY_ALERT
+    assert decision.signal_tier is SignalTier.BALANCED_BUY
     assert decision.entry_score > decision.exit_score
     assert decision.signal_tier is not None
 
@@ -97,6 +100,99 @@ def test_signal_engine_uses_configured_entry_exit_margin() -> None:
 
     assert loose.action is SignalAction.BUY_ALERT
     assert strict.action is SignalAction.HOLD
+
+
+@pytest.mark.parametrize(
+    ("session_risk", "entry_score", "expected_action"),
+    [
+        (0.95, 0.71, SignalAction.HOLD),
+        (0.95, 0.73, SignalAction.BUY_ALERT),
+        (0.85, 0.63, SignalAction.HOLD),
+        (0.85, 0.65, SignalAction.BUY_ALERT),
+    ],
+)
+def test_signal_engine_applies_session_risk_to_entry_gate_boundaries(
+    session_risk: float,
+    entry_score: float,
+    expected_action: SignalAction,
+) -> None:
+    engine = SignalEngine()
+    snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=datetime(2026, 4, 20, 13, 35, tzinfo=timezone.utc),
+        close=102.0,
+        sma_fast=101.5,
+        sma_slow=100.2,
+        ema_fast=101.8,
+        ema_slow=100.6,
+        vwap=100.8,
+        rsi=62.0,
+        atr=1.25,
+        plus_di=28.0,
+        minus_di=14.0,
+        adx=26.0,
+        macd=1.1,
+        macd_signal=0.85,
+        macd_histogram=0.25,
+        stochastic_k=34.0,
+        stochastic_d=28.0,
+    )
+
+    decision = engine.decide_action(entry_score, 0.1, TradeState.FLAT, snapshot=snapshot, session_risk=session_risk)
+
+    assert decision[0] is expected_action
+    if expected_action is SignalAction.BUY_ALERT:
+        assert decision[2] is not None
+
+
+def test_signal_engine_derives_session_risk_from_snapshot_timestamp() -> None:
+    engine = SignalEngine()
+    opening_snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=datetime(2026, 4, 20, 13, 35, tzinfo=timezone.utc),
+        close=102.0,
+        sma_fast=101.5,
+        sma_slow=100.2,
+        ema_fast=101.8,
+        ema_slow=100.6,
+        vwap=100.8,
+        rsi=62.0,
+        atr=1.25,
+        plus_di=28.0,
+        minus_di=14.0,
+        adx=26.0,
+        macd=1.1,
+        macd_signal=0.85,
+        macd_histogram=0.25,
+        stochastic_k=34.0,
+        stochastic_d=28.0,
+    )
+    later_snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=datetime(2026, 4, 20, 17, 35, tzinfo=timezone.utc),
+        close=102.0,
+        sma_fast=101.5,
+        sma_slow=100.2,
+        ema_fast=101.8,
+        ema_slow=100.6,
+        vwap=100.8,
+        rsi=62.0,
+        atr=1.25,
+        plus_di=28.0,
+        minus_di=14.0,
+        adx=26.0,
+        macd=1.1,
+        macd_signal=0.85,
+        macd_histogram=0.25,
+        stochastic_k=34.0,
+        stochastic_d=28.0,
+    )
+
+    opening_decision = engine.decide_action(0.71, 0.1, TradeState.FLAT, snapshot=opening_snapshot)
+    later_decision = engine.decide_action(0.71, 0.1, TradeState.FLAT, snapshot=later_snapshot)
+
+    assert opening_decision[0] is SignalAction.HOLD
+    assert later_decision[0] is SignalAction.BUY_ALERT
 
 
 def test_signal_engine_requires_long_entry_quality_even_with_a_good_score() -> None:
@@ -312,6 +408,7 @@ def test_signal_engine_penalizes_opening_session_risk_for_entries() -> None:
     opening_decision = engine.evaluate(opening_snapshot, TradeState.FLAT)
     late_decision = engine.evaluate(late_snapshot, TradeState.FLAT)
 
+    assert opening_decision.action is SignalAction.HOLD
     assert opening_decision.entry_score < late_decision.entry_score
     assert late_decision.action is SignalAction.BUY_ALERT
 
