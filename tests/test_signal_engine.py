@@ -2,8 +2,32 @@ from datetime import datetime, timezone
 
 import pytest
 
-from trade_signal_edge.models import IndicatorSnapshot, SignalAction, SignalConfig, SignalTier, TradeState
-from trade_signal_edge.signal_engine import SignalEngine
+from trade_signal_edge.config import RuntimeConfig
+from trade_signal_edge.models import (
+    DEFAULT_ENTRY_GATE_CAP,
+    IndicatorSnapshot,
+    SignalAction,
+    SignalConfig,
+    SignalTier,
+    TradeState,
+)
+from trade_signal_edge.signal_engine import (
+    BUY_TIER_BALANCED_ENTRY,
+    BUY_TIER_BALANCED_QUALITY,
+    BUY_TIER_CONVICTION_ENTRY,
+    BUY_TIER_CONVICTION_QUALITY,
+    BUY_TIER_OPPORTUNISTIC_ENTRY,
+    BUY_TIER_OPPORTUNISTIC_QUALITY,
+    BUY_TIER_SPECULATIVE_ENTRY,
+    BUY_TIER_SPECULATIVE_QUALITY,
+    OPENING_SESSION_PENALTY_HIGH,
+    OPENING_SESSION_PENALTY_LOW,
+    OPENING_SESSION_PENALTY_MEDIUM,
+    OPENING_SESSION_RISK_HIGH,
+    OPENING_SESSION_RISK_LOW,
+    OPENING_SESSION_RISK_MEDIUM,
+    SignalEngine,
+)
 
 
 def test_signal_engine_raises_buy_alert_when_trend_is_aligned() -> None:
@@ -102,13 +126,18 @@ def test_signal_engine_uses_configured_entry_exit_margin() -> None:
     assert strict.action is SignalAction.HOLD
 
 
+def test_signal_config_and_runtime_share_entry_gate_cap_default() -> None:
+    assert SignalConfig().entry_gate_cap == DEFAULT_ENTRY_GATE_CAP
+    assert RuntimeConfig().entry_gate_cap == DEFAULT_ENTRY_GATE_CAP
+
+
 @pytest.mark.parametrize(
     ("session_risk", "entry_score", "expected_action"),
     [
-        (0.95, 0.71, SignalAction.HOLD),
-        (0.95, 0.73, SignalAction.BUY_ALERT),
-        (0.85, 0.63, SignalAction.HOLD),
-        (0.85, 0.65, SignalAction.BUY_ALERT),
+        (0.95, 0.63, SignalAction.HOLD),
+        (0.95, 0.69, SignalAction.BUY_ALERT),
+        (0.85, 0.57, SignalAction.HOLD),
+        (0.85, 0.63, SignalAction.BUY_ALERT),
     ],
 )
 def test_signal_engine_applies_session_risk_to_entry_gate_boundaries(
@@ -143,6 +172,97 @@ def test_signal_engine_applies_session_risk_to_entry_gate_boundaries(
     assert decision[0] is expected_action
     if expected_action is SignalAction.BUY_ALERT:
         assert decision[2] is not None
+
+
+@pytest.mark.parametrize(
+    ("session_risk", "expected_penalty"),
+    [
+        (OPENING_SESSION_RISK_LOW - 0.01, 0.0),
+        (OPENING_SESSION_RISK_LOW, OPENING_SESSION_PENALTY_LOW),
+        (OPENING_SESSION_RISK_MEDIUM, OPENING_SESSION_PENALTY_MEDIUM),
+        (OPENING_SESSION_RISK_HIGH, OPENING_SESSION_PENALTY_HIGH),
+    ],
+)
+def test_signal_engine_opening_session_penalty_boundaries(session_risk: float, expected_penalty: float) -> None:
+    engine = SignalEngine()
+    assert engine._opening_session_penalty(session_risk) == expected_penalty
+
+
+@pytest.mark.parametrize(
+    ("entry_score", "risk_score", "quality_score", "session_risk", "expected_tier"),
+    [
+        (BUY_TIER_CONVICTION_ENTRY, 0.3, BUY_TIER_CONVICTION_QUALITY, 0.0, SignalTier.CONVICTION_BUY),
+        (BUY_TIER_CONVICTION_ENTRY, 0.3, BUY_TIER_CONVICTION_QUALITY - 0.01, 0.0, SignalTier.BALANCED_BUY),
+        (BUY_TIER_BALANCED_ENTRY, 0.4, BUY_TIER_BALANCED_QUALITY, 0.0, SignalTier.BALANCED_BUY),
+        (BUY_TIER_BALANCED_ENTRY, 0.4, BUY_TIER_BALANCED_QUALITY - 0.01, 0.0, SignalTier.OPPORTUNISTIC_BUY),
+        (BUY_TIER_OPPORTUNISTIC_ENTRY, 0.6, BUY_TIER_OPPORTUNISTIC_QUALITY, 0.0, SignalTier.OPPORTUNISTIC_BUY),
+        (BUY_TIER_OPPORTUNISTIC_ENTRY, 0.6, BUY_TIER_OPPORTUNISTIC_QUALITY - 0.01, 0.0, SignalTier.SPECULATIVE_BUY),
+        (BUY_TIER_SPECULATIVE_ENTRY, 0.7, BUY_TIER_SPECULATIVE_QUALITY, 0.0, SignalTier.SPECULATIVE_BUY),
+        (BUY_TIER_SPECULATIVE_ENTRY - 0.01, 0.8, BUY_TIER_SPECULATIVE_QUALITY, 0.0, None),
+    ],
+)
+def test_signal_engine_buy_tier_threshold_constants(
+    entry_score: float,
+    risk_score: float,
+    quality_score: float,
+    session_risk: float,
+    expected_tier: SignalTier | None,
+) -> None:
+    engine = SignalEngine()
+    assert engine._buy_signal_tier(entry_score, risk_score, quality_score, session_risk, False) is expected_tier
+
+
+def test_signal_engine_preserves_strong_setup_coverage_across_session_penalty() -> None:
+    engine = SignalEngine()
+    opening_snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=datetime(2026, 4, 20, 13, 35, tzinfo=timezone.utc),
+        close=100.4,
+        sma_fast=100.5,
+        sma_slow=100.2,
+        ema_fast=100.7,
+        ema_slow=100.4,
+        vwap=100.7,
+        rsi=62.0,
+        atr=1.25,
+        plus_di=28.0,
+        minus_di=14.0,
+        adx=26.0,
+        macd=1.1,
+        macd_signal=0.85,
+        macd_histogram=0.25,
+        stochastic_k=34.0,
+        stochastic_d=28.0,
+    )
+    later_snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=datetime(2026, 4, 20, 17, 35, tzinfo=timezone.utc),
+        close=100.4,
+        sma_fast=100.5,
+        sma_slow=100.2,
+        ema_fast=100.7,
+        ema_slow=100.4,
+        vwap=100.7,
+        rsi=62.0,
+        atr=1.25,
+        plus_di=28.0,
+        minus_di=14.0,
+        adx=26.0,
+        macd=1.1,
+        macd_signal=0.85,
+        macd_histogram=0.25,
+        stochastic_k=34.0,
+        stochastic_d=28.0,
+    )
+
+    opening_decision = engine.evaluate(opening_snapshot, TradeState.FLAT)
+    later_decision = engine.evaluate(later_snapshot, TradeState.FLAT)
+
+    assert opening_decision.action is SignalAction.HOLD
+    assert opening_decision.signal_tier is None
+    assert later_decision.action is SignalAction.BUY_ALERT
+    assert later_decision.signal_tier is SignalTier.OPPORTUNISTIC_BUY
+    assert opening_decision.entry_score < later_decision.entry_score
 
 
 def test_signal_engine_derives_session_risk_from_snapshot_timestamp() -> None:
@@ -188,8 +308,8 @@ def test_signal_engine_derives_session_risk_from_snapshot_timestamp() -> None:
         stochastic_d=28.0,
     )
 
-    opening_decision = engine.decide_action(0.71, 0.1, TradeState.FLAT, snapshot=opening_snapshot)
-    later_decision = engine.decide_action(0.71, 0.1, TradeState.FLAT, snapshot=later_snapshot)
+    opening_decision = engine.decide_action(0.63, 0.1, TradeState.FLAT, snapshot=opening_snapshot)
+    later_decision = engine.decide_action(0.63, 0.1, TradeState.FLAT, snapshot=later_snapshot)
 
     assert opening_decision[0] is SignalAction.HOLD
     assert later_decision[0] is SignalAction.BUY_ALERT
@@ -367,42 +487,48 @@ def test_signal_engine_penalizes_opening_session_risk_for_entries() -> None:
     opening_snapshot = IndicatorSnapshot(
         symbol="NVDA",
         timestamp=datetime(2026, 4, 20, 13, 35, tzinfo=timezone.utc),
-        close=102.0,
-        sma_fast=101.5,
+        close=100.4,
+        sma_fast=100.5,
         sma_slow=100.2,
-        ema_fast=101.8,
-        ema_slow=100.6,
-        vwap=100.8,
-        rsi=62.0,
+        ema_fast=100.7,
+        ema_slow=100.4,
+        vwap=100.7,
+        rsi=49.0,
         atr=1.25,
-        plus_di=28.0,
-        minus_di=14.0,
-        adx=26.0,
-        macd=1.1,
-        macd_signal=0.85,
-        macd_histogram=0.25,
-        stochastic_k=34.0,
-        stochastic_d=28.0,
+        plus_di=24.0,
+        minus_di=18.0,
+        adx=22.0,
+        macd=0.4,
+        macd_signal=0.35,
+        macd_histogram=0.05,
+        stochastic_k=42.0,
+        stochastic_d=39.0,
+        obv=None,
+        relative_volume=1.0,
+        volume_profile=0.16,
     )
     late_snapshot = IndicatorSnapshot(
         symbol="NVDA",
         timestamp=datetime(2026, 4, 20, 17, 35, tzinfo=timezone.utc),
-        close=102.0,
-        sma_fast=101.5,
+        close=100.4,
+        sma_fast=100.5,
         sma_slow=100.2,
-        ema_fast=101.8,
-        ema_slow=100.6,
-        vwap=100.8,
-        rsi=62.0,
+        ema_fast=100.7,
+        ema_slow=100.4,
+        vwap=100.7,
+        rsi=49.0,
         atr=1.25,
-        plus_di=28.0,
-        minus_di=14.0,
-        adx=26.0,
-        macd=1.1,
-        macd_signal=0.85,
-        macd_histogram=0.25,
-        stochastic_k=34.0,
-        stochastic_d=28.0,
+        plus_di=24.0,
+        minus_di=18.0,
+        adx=22.0,
+        macd=0.4,
+        macd_signal=0.35,
+        macd_histogram=0.05,
+        stochastic_k=42.0,
+        stochastic_d=39.0,
+        obv=None,
+        relative_volume=1.0,
+        volume_profile=0.16,
     )
 
     opening_decision = engine.evaluate(opening_snapshot, TradeState.FLAT)

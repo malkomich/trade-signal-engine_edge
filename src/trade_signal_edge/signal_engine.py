@@ -5,7 +5,14 @@ from datetime import datetime, timezone
 from math import isfinite
 from zoneinfo import ZoneInfo
 
-from .models import IndicatorSnapshot, SignalAction, SignalConfig, SignalDecision, SignalTier, TradeState
+from .models import (
+    IndicatorSnapshot,
+    SignalAction,
+    SignalConfig,
+    SignalDecision,
+    SignalTier,
+    TradeState,
+)
 
 try:
     NEW_YORK_TIMEZONE = ZoneInfo("America/New_York")
@@ -14,28 +21,34 @@ except Exception:  # pragma: no cover - fallback for stripped tzdata environment
 
 SELL_PRESSURE_MAX_SCORE = 1.3
 BUY_ENTRY_FLOOR = 0.5
-DEFAULT_ENTRY_GATE_CAP = 0.56
-ENTRY_SCORE_RISK_ADJUSTMENT = 0.17
-ENTRY_SCORE_SELL_PRESSURE_ADJUSTMENT = 0.06
+ENTRY_SCORE_RISK_ADJUSTMENT = 0.14
+ENTRY_SCORE_SELL_PRESSURE_ADJUSTMENT = 0.05
 OPENING_SESSION_RISK_HIGH = 0.95
 OPENING_SESSION_RISK_MEDIUM = 0.85
 OPENING_SESSION_RISK_LOW = 0.7
-OPENING_SESSION_PENALTY_HIGH = 0.16
-OPENING_SESSION_PENALTY_MEDIUM = 0.08
-OPENING_SESSION_PENALTY_LOW = 0.04
+OPENING_SESSION_PENALTY_HIGH = 0.12
+OPENING_SESSION_PENALTY_MEDIUM = 0.06
+OPENING_SESSION_PENALTY_LOW = 0.03
 ENTRY_MARGIN_BASE = 0.04
 ENTRY_MARGIN_STRONG_EXIT_BONUS = 0.04
-BUY_TIER_CONVICTION_ENTRY = 0.78
-BUY_TIER_CONVICTION_QUALITY = 0.72
+BUY_QUALITY_RSI_MIN = 48.0
+BUY_QUALITY_RSI_MAX = 70.0
+BUY_QUALITY_STOCHASTIC_MAX = 85.0
+BUY_QUALITY_RELATIVE_VOLUME_MIN = 0.95
+BUY_QUALITY_VOLUME_PROFILE_MIN = 0.15
+BUY_TIER_STRONG_EXIT_PENALTY = 0.08
+BUY_TIER_HIGH_RISK_PENALTY = 0.05
+BUY_TIER_CONVICTION_ENTRY = 0.76
+BUY_TIER_CONVICTION_QUALITY = 0.7
 BUY_TIER_CONVICTION_MAX_RISK = 0.6
-BUY_TIER_BALANCED_ENTRY = 0.7
-BUY_TIER_BALANCED_QUALITY = 0.6
+BUY_TIER_BALANCED_ENTRY = 0.68
+BUY_TIER_BALANCED_QUALITY = 0.58
 BUY_TIER_BALANCED_MAX_RISK = 0.74
-BUY_TIER_OPPORTUNISTIC_ENTRY = 0.58
-BUY_TIER_OPPORTUNISTIC_QUALITY = 0.5
+BUY_TIER_OPPORTUNISTIC_ENTRY = 0.56
+BUY_TIER_OPPORTUNISTIC_QUALITY = 0.48
 BUY_TIER_OPPORTUNISTIC_MAX_RISK = 0.86
-BUY_TIER_SPECULATIVE_ENTRY = 0.52
-BUY_TIER_SPECULATIVE_QUALITY = 0.42
+BUY_TIER_SPECULATIVE_ENTRY = 0.5
+BUY_TIER_SPECULATIVE_QUALITY = 0.4
 BUY_TIER_SPECULATIVE_MAX_RISK = 0.94
 
 
@@ -610,13 +623,13 @@ class SignalEngine:
         if snapshot.plus_di is not None and snapshot.minus_di is not None:
             checks.append(snapshot.plus_di >= snapshot.minus_di)
         if snapshot.rsi is not None:
-            checks.append(50 <= snapshot.rsi < 68)
+            checks.append(BUY_QUALITY_RSI_MIN <= snapshot.rsi < BUY_QUALITY_RSI_MAX)
         if snapshot.stochastic_k is not None and snapshot.stochastic_d is not None:
-            checks.append(snapshot.stochastic_k >= snapshot.stochastic_d and snapshot.stochastic_k < 80)
+            checks.append(snapshot.stochastic_k >= snapshot.stochastic_d and snapshot.stochastic_k < BUY_QUALITY_STOCHASTIC_MAX)
         if snapshot.relative_volume is not None:
-            checks.append(snapshot.relative_volume >= 1.05)
+            checks.append(snapshot.relative_volume >= BUY_QUALITY_RELATIVE_VOLUME_MIN)
         if snapshot.volume_profile is not None:
-            checks.append(snapshot.volume_profile >= 0.18)
+            checks.append(snapshot.volume_profile >= BUY_QUALITY_VOLUME_PROFILE_MIN)
         if snapshot.obv is not None:
             checks.append(snapshot.obv >= 0)
         if benchmark is not None and benchmark.ema_fast is not None and benchmark.ema_slow is not None:
@@ -635,8 +648,8 @@ class SignalEngine:
         session_risk: float,
         strong_exit_pressure: bool,
     ) -> SignalTier | None:
-        pressure_penalty = 0.08 if strong_exit_pressure else 0.0
-        high_risk_penalty = 0.05 if risk_score >= 0.75 else 0.0
+        pressure_penalty = BUY_TIER_STRONG_EXIT_PENALTY if strong_exit_pressure else 0.0
+        high_risk_penalty = BUY_TIER_HIGH_RISK_PENALTY if risk_score >= 0.75 else 0.0
         opening_penalty = self._opening_session_penalty(session_risk)
         tier_quality_penalty = pressure_penalty + opening_penalty
         if (

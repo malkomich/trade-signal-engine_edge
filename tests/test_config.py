@@ -140,7 +140,7 @@ def test_load_runtime_config_empty_entry_gate_cap_uses_default(monkeypatch) -> N
 
     runtime = load_runtime_config()
 
-    assert runtime.entry_gate_cap == 0.56
+    assert runtime.entry_gate_cap == 0.52
 
 
 def test_load_runtime_config_valid_entry_gate_cap(monkeypatch) -> None:

@@ -6,6 +6,9 @@ from enum import Enum
 from typing import Mapping, Optional
 
 
+DEFAULT_ENTRY_GATE_CAP = 0.52
+
+
 class TradeState(str, Enum):
     FLAT = "FLAT"
     ENTRY_SIGNALLED = "ENTRY_SIGNALLED"
@@ -100,7 +103,7 @@ class SignalConfig:
     entry_threshold: float = 0.7
     exit_threshold: float = 0.6
     entry_exit_margin: float = 0.1
-    entry_gate_cap: float = 0.56
+    entry_gate_cap: float = DEFAULT_ENTRY_GATE_CAP
     buy_weights: Mapping[str, float] = field(default_factory=default_signal_weights)
     sell_weights: Mapping[str, float] = field(default_factory=default_signal_weights)
     buy_timeframe_weights: Mapping[str, float] = field(default_factory=default_timeframe_weights)

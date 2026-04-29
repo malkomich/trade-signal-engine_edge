@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import os
 from pathlib import Path
 
-from .models import default_signal_weights, default_timeframe_weights
+from .models import DEFAULT_ENTRY_GATE_CAP, default_signal_weights, default_timeframe_weights
 
 
 @dataclass(slots=True)
@@ -20,7 +20,7 @@ class RuntimeConfig:
     entry_threshold: float = 0.7
     exit_threshold: float = 0.6
     entry_exit_margin: float = 0.1
-    entry_gate_cap: float = 0.56
+    entry_gate_cap: float = DEFAULT_ENTRY_GATE_CAP
     buy_signal_weights: dict[str, float] = field(default_factory=default_signal_weights)
     sell_signal_weights: dict[str, float] = field(default_factory=default_signal_weights)
     buy_timeframe_weights: dict[str, float] = field(default_factory=default_timeframe_weights)
