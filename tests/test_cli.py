@@ -20,6 +20,7 @@ def make_decision(symbol: str, timestamp: datetime, entry_score: float, exit_sco
         entry_score=entry_score,
         exit_score=exit_score,
         action=SignalAction.HOLD,
+        signal_tier=None,
         reasons=reasons,
     )
 
@@ -301,6 +302,7 @@ def test_build_market_snapshot_payload_omits_hold_signal_action() -> None:
     )
 
     assert payload["signal_action"] is None
+    assert payload["signal_tier"] is None
     assert payload["timeframe"] == "1m"
 
 

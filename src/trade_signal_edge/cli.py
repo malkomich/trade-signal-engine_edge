@@ -408,6 +408,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
             benchmark_symbol=runtime.benchmark_symbol,
             regime="benchmark snapshot",
             window_id="",
+            signal_tier=None,
         )
         if session_client is not None:
             session_client.publish_market_snapshot(runtime.session_id, benchmark_market_payload)
@@ -504,6 +505,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
                             benchmark_symbol=runtime.benchmark_symbol,
                             regime=decision.reasons[-1] if decision.reasons else "live market session",
                             window_id=current_window_id,
+                            signal_tier=decision.signal_tier.value if decision.signal_tier is not None else None,
                         ),
                     )
                 )
@@ -645,7 +647,7 @@ def _combine_timeframe_decisions(
         for snapshot in snapshots_by_timeframe.values()
         if snapshot is not None
     )
-    action, action_reasons = signal_engine.decide_action(
+    action, action_reasons, signal_tier = signal_engine.decide_action(
         entry_score,
         exit_score,
         state,
@@ -664,6 +666,7 @@ def _combine_timeframe_decisions(
         entry_score=round(entry_score, 4),
         exit_score=round(exit_score, 4),
         action=action,
+        signal_tier=signal_tier,
         reasons=tuple(deduped_reasons),
     )
 
@@ -681,6 +684,7 @@ def _build_market_snapshot_payload(
     benchmark_symbol: str,
     regime: str,
     window_id: str,
+    signal_tier: str | None = None,
 ) -> dict[str, object]:
     latest_bar = bars_series[-1]
     # This payload is part of the RTDB contract consumed by admin and analytics.
@@ -722,6 +726,7 @@ def _build_market_snapshot_payload(
         "exit_score": exit_score,
         "event_type": "market.snapshot",
         "signal_action": None if decision_action in (None, "HOLD") else decision_action,
+        "signal_tier": signal_tier,
         "signal_state": next_state,
         "signal_regime": regime,
         "benchmark_symbol": benchmark_symbol,

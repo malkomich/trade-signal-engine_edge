@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from trade_signal_edge.models import IndicatorSnapshot, SignalAction, SignalConfig, TradeState
+from trade_signal_edge.models import IndicatorSnapshot, SignalAction, SignalConfig, SignalTier, TradeState
 from trade_signal_edge.signal_engine import SignalEngine
 
 
@@ -30,6 +30,117 @@ def test_signal_engine_raises_buy_alert_when_trend_is_aligned() -> None:
 
     assert decision.action is SignalAction.BUY_ALERT
     assert decision.entry_score > decision.exit_score
+    assert decision.signal_tier is not None
+
+
+def test_signal_engine_classifies_buy_tiers_by_strength() -> None:
+    conviction_snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
+        close=102.0,
+        sma_fast=101.9,
+        sma_slow=100.2,
+        ema_fast=101.8,
+        ema_slow=100.6,
+        vwap=100.8,
+        rsi=63.0,
+        atr=1.05,
+        plus_di=30.0,
+        minus_di=13.0,
+        adx=28.0,
+        macd=1.2,
+        macd_signal=0.9,
+        macd_histogram=0.3,
+        stochastic_k=36.0,
+        stochastic_d=30.0,
+        obv=1_200.0,
+        relative_volume=1.7,
+        volume_profile=0.28,
+        bollinger_middle=101.0,
+        bollinger_upper=103.0,
+        bollinger_lower=99.0,
+    )
+    balanced_snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
+        close=101.0,
+        sma_fast=100.8,
+        sma_slow=100.5,
+        ema_fast=100.9,
+        ema_slow=100.6,
+        vwap=100.7,
+        rsi=55.5,
+        atr=1.0,
+        plus_di=24.0,
+        minus_di=16.0,
+        adx=22.0,
+        macd=0.55,
+        macd_signal=0.5,
+        macd_histogram=0.05,
+        stochastic_k=45.0,
+        stochastic_d=42.0,
+        relative_volume=0.9,
+        volume_profile=0.12,
+        bollinger_middle=100.5,
+        bollinger_upper=101.7,
+        bollinger_lower=99.2,
+    )
+    opportunistic_snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
+        close=102.92089025354042,
+        sma_fast=102.80073681563505,
+        sma_slow=102.72893705465884,
+        ema_fast=103.23476478229237,
+        ema_slow=102.8593079359351,
+        vwap=102.8985438721535,
+        rsi=55.222126964790775,
+        atr=1.1825331761480251,
+        plus_di=22.328824305628803,
+        minus_di=17.855653523529085,
+        adx=23.426883679452448,
+        macd=0.6505844309913789,
+        macd_signal=0.15846527971934565,
+        macd_histogram=0.1458967901289332,
+        stochastic_k=41.04793293167423,
+        stochastic_d=43.738786907931434,
+        bollinger_middle=103.03945224759707,
+        bollinger_upper=103.71663408782216,
+        bollinger_lower=101.69862218280882,
+        obv=None,
+        relative_volume=0.9146317239760938,
+        volume_profile=0.10569216672409912,
+    )
+    speculative_snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=datetime(2026, 4, 20, 13, 35, tzinfo=timezone.utc),
+        close=100.6,
+        sma_fast=100.0,
+        sma_slow=99.9,
+        ema_fast=100.2,
+        ema_slow=100.0,
+        vwap=100.05,
+        rsi=54.0,
+        atr=1.7,
+        plus_di=22.0,
+        minus_di=19.0,
+        adx=20.0,
+        macd=0.35,
+        macd_signal=0.32,
+        macd_histogram=0.03,
+        stochastic_k=53.0,
+        stochastic_d=50.0,
+        relative_volume=0.95,
+        volume_profile=0.14,
+        bollinger_middle=100.4,
+        bollinger_upper=101.0,
+        bollinger_lower=99.3,
+    )
+
+    assert SignalEngine().evaluate(conviction_snapshot, TradeState.FLAT).signal_tier is SignalTier.CONVICTION_BUY
+    assert SignalEngine().evaluate(balanced_snapshot, TradeState.FLAT).signal_tier is SignalTier.BALANCED_BUY
+    assert SignalEngine().evaluate(opportunistic_snapshot, TradeState.FLAT).signal_tier is SignalTier.OPPORTUNISTIC_BUY
+    assert SignalEngine().evaluate(speculative_snapshot, TradeState.FLAT).signal_tier is SignalTier.SPECULATIVE_BUY
 
 
 def test_signal_engine_vetoes_entries_when_exit_pressure_is_high() -> None:
@@ -148,6 +259,7 @@ def test_signal_engine_rejects_missing_snapshot_for_entry_action() -> None:
 
     assert decision[0] is SignalAction.HOLD
     assert decision[1] == ()
+    assert decision[2] is None
 
 
 def test_signal_engine_biases_are_covered_for_rsi_and_stochastic() -> None:
@@ -252,6 +364,7 @@ def test_signal_engine_uses_exit_pressure_for_open_positions() -> None:
     assert decision.action is SignalAction.SELL_ALERT
     assert decision.exit_score >= engine.config.exit_threshold
     assert "exit-pressure" in decision.reasons
+    assert decision.signal_tier is None
 
 
 def test_signal_engine_penalizes_opening_session_risk_for_entries() -> None:
