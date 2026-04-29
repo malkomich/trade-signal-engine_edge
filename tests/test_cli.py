@@ -20,6 +20,7 @@ def make_decision(symbol: str, timestamp: datetime, entry_score: float, exit_sco
         entry_score=entry_score,
         exit_score=exit_score,
         action=SignalAction.HOLD,
+        signal_tier=None,
         reasons=reasons,
     )
 
