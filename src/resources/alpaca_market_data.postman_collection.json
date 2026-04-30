@@ -20,11 +20,11 @@
     },
     {
       "key": "symbol",
-      "value": "AAPL"
+      "value": "TSLA"
     },
     {
       "key": "symbols",
-      "value": "AAPL"
+      "value": "TSLA,NVDA,META"
     },
     {
       "key": "timeframe",

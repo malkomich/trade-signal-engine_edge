@@ -29,17 +29,14 @@ OPENING_SESSION_RISK_LOW = 0.7
 OPENING_SESSION_PENALTY_HIGH = 0.12
 OPENING_SESSION_PENALTY_MEDIUM = 0.06
 OPENING_SESSION_PENALTY_LOW = 0.03
-ENTRY_MARGIN_BASE = 0.04
+ENTRY_MARGIN_BASE = 0.03
 ENTRY_MARGIN_STRONG_EXIT_BONUS = 0.04
 BUY_QUALITY_RSI_MIN = 48.0
 BUY_QUALITY_RSI_MAX = 70.0
 BUY_QUALITY_STOCHASTIC_MAX = 85.0
 BUY_QUALITY_RELATIVE_VOLUME_MIN = 0.95
 BUY_QUALITY_VOLUME_PROFILE_MIN = 0.15
-BUY_QUALITY_MOMENTUM_RSI_MIN = BUY_QUALITY_RSI_MIN
-BUY_QUALITY_MOMENTUM_RSI_MAX = BUY_QUALITY_RSI_MAX
-BUY_QUALITY_STOCHASTIC_RISING_MAX = BUY_QUALITY_STOCHASTIC_MAX
-BUY_QUALITY_SUPPORT_THRESHOLD = 0.7
+BUY_QUALITY_SUPPORT_THRESHOLD = 0.62
 BUY_QUALITY_MIN_SUPPORTING_SIGNALS = 2
 BUY_QUALITY_TREND_WEIGHT = 0.4
 BUY_QUALITY_FLOW_WEIGHT = 0.25
@@ -48,22 +45,26 @@ BUY_QUALITY_VOLATILITY_WEIGHT = 0.1
 BUY_QUALITY_STRENGTH_WEIGHT = 0.05
 BUY_TIER_STRONG_EXIT_PENALTY = 0.08
 BUY_TIER_HIGH_RISK_PENALTY = 0.05
-BUY_TIER_CONVICTION_ENTRY = 0.76
-BUY_TIER_CONVICTION_QUALITY = 0.7
-BUY_TIER_CONVICTION_MAX_RISK = 0.6
-BUY_TIER_BALANCED_ENTRY = 0.68
+BUY_TIER_CONVICTION_ENTRY = 0.74
+BUY_TIER_CONVICTION_QUALITY = 0.68
+BUY_TIER_CONVICTION_MAX_RISK = 0.52
+BUY_TIER_BALANCED_ENTRY = 0.66
 BUY_TIER_BALANCED_QUALITY = 0.58
-BUY_TIER_BALANCED_MAX_RISK = 0.74
+BUY_TIER_BALANCED_MAX_RISK = 0.7
 BUY_TIER_OPPORTUNISTIC_ENTRY = 0.56
-BUY_TIER_OPPORTUNISTIC_QUALITY = 0.48
-BUY_TIER_OPPORTUNISTIC_MAX_RISK = 0.86
+BUY_TIER_OPPORTUNISTIC_QUALITY = 0.46
+BUY_TIER_OPPORTUNISTIC_MAX_RISK = 0.84
 BUY_TIER_SPECULATIVE_ENTRY = 0.5
-BUY_TIER_SPECULATIVE_QUALITY = 0.4
+BUY_TIER_SPECULATIVE_QUALITY = 0.36
 BUY_TIER_SPECULATIVE_MAX_RISK = 0.94
 BUY_TIER_CONVICTION_MIN_SUPPORTING_SIGNALS = 4
 BUY_TIER_BALANCED_MIN_SUPPORTING_SIGNALS = 3
 BUY_TIER_OPPORTUNISTIC_MIN_SUPPORTING_SIGNALS = 2
 BUY_TIER_SPECULATIVE_MIN_SUPPORTING_SIGNALS = 2
+BUY_RSI_BEARISH_THRESHOLD = 55.0
+BUY_RSI_STRONG_ZONE_MAX = 35.0
+BUY_STOCHASTIC_OVERBOUGHT_THRESHOLD = 78.0
+BUY_MACD_BEARISH_CROSS_GUARD = 0.0
 
 
 @dataclass(slots=True)
@@ -754,34 +755,36 @@ class SignalEngine:
     def _momentum_quality_slice(self, snapshot: IndicatorSnapshot) -> QualitySlice:
         components: list[tuple[str, float, bool]] = []
         if snapshot.rsi is not None:
-            if BUY_QUALITY_MOMENTUM_RSI_MIN <= snapshot.rsi <= 65:
+            if snapshot.rsi <= BUY_RSI_STRONG_ZONE_MAX:
                 score = 1.0
-            elif 45 <= snapshot.rsi < BUY_QUALITY_MOMENTUM_RSI_MAX:
+            elif snapshot.rsi <= 45:
                 score = 0.75
-            elif 35 <= snapshot.rsi < 75:
+            elif snapshot.rsi < BUY_RSI_BEARISH_THRESHOLD:
                 score = 0.45
             else:
-                score = 0.2
+                score = 0.05
             components.append(("momentum:rsi-healthy", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
         if snapshot.macd is not None and snapshot.macd_signal is not None and snapshot.macd_histogram is not None:
             if snapshot.macd > snapshot.macd_signal and snapshot.macd_histogram > 0:
                 score = 1.0
-            elif snapshot.macd_histogram >= 0:
-                score = 0.7
+            elif snapshot.macd > snapshot.macd_signal and snapshot.macd_histogram >= 0:
+                score = 0.75
             elif snapshot.macd > snapshot.macd_signal:
-                score = 0.5
+                score = 0.45
+            elif snapshot.macd < snapshot.macd_signal and snapshot.macd_histogram < 0:
+                score = 0.0
             else:
-                score = 0.2
+                score = 0.25
             components.append(("momentum:macd-positive", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
         if snapshot.stochastic_k is not None and snapshot.stochastic_d is not None:
-            if snapshot.stochastic_k > snapshot.stochastic_d and snapshot.stochastic_k < BUY_QUALITY_STOCHASTIC_RISING_MAX:
+            if snapshot.stochastic_k > snapshot.stochastic_d and snapshot.stochastic_k < BUY_STOCHASTIC_OVERBOUGHT_THRESHOLD:
                 score = 1.0
             elif snapshot.stochastic_k > snapshot.stochastic_d:
-                score = 0.7
+                score = 0.4
             elif snapshot.stochastic_k < 30 and snapshot.stochastic_k <= snapshot.stochastic_d:
                 score = 0.45
             else:
-                score = 0.2
+                score = 0.0
             components.append(("momentum:stochastic-rising", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
         if not components:
             return QualitySlice(score=0.0, supportive_signals=0, component_count=0, reasons=())
