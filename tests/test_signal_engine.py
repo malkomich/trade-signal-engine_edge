@@ -610,3 +610,79 @@ def test_signal_engine_accounts_for_benchmark_alignment() -> None:
     assert any(reason.startswith("QQQ ") for reason in decision.reasons)
     assert 0.0 <= decision.entry_score <= 1.0
     assert 0.0 <= decision.exit_score <= 1.0
+
+
+def test_signal_engine_does_not_reward_bearish_benchmark_context() -> None:
+    bullish_benchmark = IndicatorSnapshot(
+        symbol="QQQ",
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
+        close=100.2,
+        ema_fast=100.4,
+        ema_slow=99.6,
+    )
+    bearish_benchmark = IndicatorSnapshot(
+        symbol="QQQ",
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
+        close=99.8,
+        ema_fast=99.2,
+        ema_slow=99.6,
+    )
+    snapshot = IndicatorSnapshot(
+        symbol="AAPL",
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
+        close=103.5,
+        sma_fast=103.0,
+        sma_slow=102.0,
+        ema_fast=103.1,
+        ema_slow=102.2,
+        vwap=102.4,
+        rsi=58.0,
+        atr=1.15,
+        plus_di=25.0,
+        minus_di=16.0,
+        adx=24.0,
+        macd=0.8,
+        macd_signal=0.5,
+        macd_histogram=0.3,
+        stochastic_k=44.0,
+        stochastic_d=39.0,
+    )
+
+    baseline = SignalEngine().evaluate(snapshot, TradeState.FLAT)
+    bullish = SignalEngine().evaluate(snapshot, TradeState.FLAT, bullish_benchmark)
+    bearish = SignalEngine().evaluate(snapshot, TradeState.FLAT, bearish_benchmark)
+
+    assert bullish.entry_score > baseline.entry_score
+    assert bearish.entry_score <= baseline.entry_score
+
+
+def test_signal_engine_counts_category_support_not_raw_indicator_support() -> None:
+    snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
+        close=102.4,
+        sma_fast=101.8,
+        sma_slow=100.9,
+        ema_fast=102.0,
+        ema_slow=101.1,
+        vwap=101.5,
+        rsi=60.0,
+        atr=1.2,
+        plus_di=26.0,
+        minus_di=16.0,
+        adx=24.0,
+        macd=0.75,
+        macd_signal=0.5,
+        macd_histogram=0.25,
+        stochastic_k=46.0,
+        stochastic_d=40.0,
+        obv=2_000.0,
+        obv_delta=120.0,
+        relative_volume=1.25,
+        volume_profile=0.22,
+    )
+
+    assessment = SignalEngine()._long_entry_quality_assessment(snapshot, None)
+
+    assert assessment.supportive_signals == 5
+    assert assessment.component_count > assessment.supportive_signals

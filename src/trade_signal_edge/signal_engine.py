@@ -674,17 +674,13 @@ class SignalEngine:
             weighted_score /= weighted_denominator
 
         if benchmark is not None and benchmark.ema_fast is not None and benchmark.ema_slow is not None:
-            benchmark_alignment = 1.0 if benchmark.ema_fast >= benchmark.ema_slow else 0.35
-            weighted_score = min(1.0, weighted_score + (0.05 * benchmark_alignment))
+            if benchmark.ema_fast >= benchmark.ema_slow:
+                weighted_score = min(1.0, weighted_score + 0.05)
 
         weighted_score = _clamp(weighted_score)
         reasons = trend.reasons + flow.reasons + momentum.reasons + volatility.reasons + strength.reasons
-        supportive_signals = (
-            trend.supportive_signals
-            + flow.supportive_signals
-            + momentum.supportive_signals
-            + volatility.supportive_signals
-            + strength.supportive_signals
+        supportive_signals = sum(
+            1 for category in (trend, flow, momentum, volatility, strength) if category.supportive_signals > 0
         )
         component_count = (
             trend.component_count
