@@ -36,6 +36,13 @@ BUY_QUALITY_RSI_MAX = 70.0
 BUY_QUALITY_STOCHASTIC_MAX = 85.0
 BUY_QUALITY_RELATIVE_VOLUME_MIN = 0.95
 BUY_QUALITY_VOLUME_PROFILE_MIN = 0.15
+BUY_QUALITY_SUPPORT_THRESHOLD = 0.7
+BUY_QUALITY_MIN_SUPPORTING_SIGNALS = 2
+BUY_QUALITY_TREND_WEIGHT = 0.4
+BUY_QUALITY_FLOW_WEIGHT = 0.25
+BUY_QUALITY_MOMENTUM_WEIGHT = 0.2
+BUY_QUALITY_VOLATILITY_WEIGHT = 0.1
+BUY_QUALITY_STRENGTH_WEIGHT = 0.05
 BUY_TIER_STRONG_EXIT_PENALTY = 0.08
 BUY_TIER_HIGH_RISK_PENALTY = 0.05
 BUY_TIER_CONVICTION_ENTRY = 0.76
@@ -50,6 +57,18 @@ BUY_TIER_OPPORTUNISTIC_MAX_RISK = 0.86
 BUY_TIER_SPECULATIVE_ENTRY = 0.5
 BUY_TIER_SPECULATIVE_QUALITY = 0.4
 BUY_TIER_SPECULATIVE_MAX_RISK = 0.94
+BUY_TIER_CONVICTION_MIN_SUPPORTING_SIGNALS = 4
+BUY_TIER_BALANCED_MIN_SUPPORTING_SIGNALS = 3
+BUY_TIER_OPPORTUNISTIC_MIN_SUPPORTING_SIGNALS = 2
+BUY_TIER_SPECULATIVE_MIN_SUPPORTING_SIGNALS = 2
+
+
+@dataclass(slots=True)
+class QualitySlice:
+    score: float
+    supportive_signals: int
+    component_count: int
+    reasons: tuple[str, ...] = ()
 
 
 def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
@@ -107,6 +126,7 @@ class SignalEngine:
         session_risk = self._session_risk(snapshot.timestamp)
         strong_exit_pressure = self.is_strong_exit_pressure(snapshot)
         sell_pressure = self._sell_pressure_bias(snapshot)
+        quality_assessment = self._long_entry_quality_assessment(snapshot, benchmark)
 
         add("sma", sma_bias, -sma_bias)
         add("ema", ema_bias, -ema_bias)
@@ -150,6 +170,7 @@ class SignalEngine:
             risk_score,
             session_risk,
             strong_exit_pressure,
+            quality_assessment,
         )
         reasons.extend(action_reasons)
 
@@ -178,6 +199,7 @@ class SignalEngine:
         risk_score: float | None = None,
         session_risk: float | None = None,
         strong_exit_pressure: bool | None = None,
+        quality_assessment: QualitySlice | None = None,
     ) -> tuple[SignalAction, tuple[str, ...], SignalTier | None]:
         if strong_exit_pressure is None:
             strong_exit_pressure = self.is_strong_exit_pressure(snapshot)
@@ -198,8 +220,10 @@ class SignalEngine:
         if state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= entry_gate:
             if snapshot is None:
                 return SignalAction.HOLD, (), None
-            quality_score = self._long_entry_quality_score(snapshot, benchmark)
-            if quality_score <= 0:
+            if quality_assessment is None:
+                quality_assessment = self._long_entry_quality_assessment(snapshot, benchmark)
+            quality_score = quality_assessment.score
+            if quality_score <= 0 or quality_assessment.supportive_signals < BUY_QUALITY_MIN_SUPPORTING_SIGNALS:
                 return SignalAction.HOLD, (), None
             effective_margin = max(ENTRY_MARGIN_BASE, self.config.entry_exit_margin * 0.85)
             if strong_exit_pressure:
@@ -214,12 +238,15 @@ class SignalEngine:
                 entry_score=entry_score,
                 risk_score=risk_score,
                 quality_score=quality_score,
+                supportive_signals=quality_assessment.supportive_signals,
                 session_risk=session_risk,
                 strong_exit_pressure=strong_exit_pressure,
             )
             if buy_tier is None:
                 return SignalAction.HOLD, (), None
-            return SignalAction.BUY_ALERT, ("entry-qualified", f"buy-tier:{buy_tier.value}"), buy_tier
+            reasons = ["entry-qualified", f"buy-tier:{buy_tier.value}"]
+            reasons.extend(quality_assessment.reasons)
+            return SignalAction.BUY_ALERT, tuple(dict.fromkeys(reasons)), buy_tier
 
         return SignalAction.HOLD, (), None
 
@@ -608,43 +635,216 @@ class SignalEngine:
     def _long_entry_quality_score(self, snapshot: IndicatorSnapshot | None, benchmark: IndicatorSnapshot | None) -> float:
         if snapshot is None:
             return 0.0
-        checks: list[bool] = []
+        return self._long_entry_quality_assessment(snapshot, benchmark).score
 
-        if snapshot.ema_fast is not None and snapshot.ema_slow is not None:
-            checks.append(snapshot.ema_fast > snapshot.ema_slow)
-        if snapshot.sma_fast is not None and snapshot.sma_slow is not None:
-            checks.append(snapshot.sma_fast >= snapshot.sma_slow)
-        if snapshot.vwap is not None:
-            checks.append(snapshot.close >= snapshot.vwap)
-        if snapshot.bollinger_middle is not None:
-            checks.append(snapshot.close >= snapshot.bollinger_middle)
-        if snapshot.macd is not None and snapshot.macd_signal is not None and snapshot.macd_histogram is not None:
-            checks.append(snapshot.macd > snapshot.macd_signal and snapshot.macd_histogram >= 0)
-        if snapshot.plus_di is not None and snapshot.minus_di is not None:
-            checks.append(snapshot.plus_di >= snapshot.minus_di)
-        if snapshot.rsi is not None:
-            checks.append(BUY_QUALITY_RSI_MIN <= snapshot.rsi < BUY_QUALITY_RSI_MAX)
-        if snapshot.stochastic_k is not None and snapshot.stochastic_d is not None:
-            checks.append(snapshot.stochastic_k >= snapshot.stochastic_d and snapshot.stochastic_k < BUY_QUALITY_STOCHASTIC_MAX)
-        if snapshot.relative_volume is not None:
-            checks.append(snapshot.relative_volume >= BUY_QUALITY_RELATIVE_VOLUME_MIN)
-        if snapshot.volume_profile is not None:
-            checks.append(snapshot.volume_profile >= BUY_QUALITY_VOLUME_PROFILE_MIN)
-        if snapshot.obv is not None:
-            checks.append(snapshot.obv >= 0)
+    def _long_entry_quality_assessment(
+        self,
+        snapshot: IndicatorSnapshot,
+        benchmark: IndicatorSnapshot | None,
+    ) -> QualitySlice:
+        trend = self._trend_quality_slice(snapshot)
+        flow = self._flow_quality_slice(snapshot)
+        momentum = self._momentum_quality_slice(snapshot)
+        volatility = self._volatility_quality_slice(snapshot)
+        strength = self._strength_quality_slice(snapshot)
+
+        weighted_score = 0.0
+        weighted_denominator = 0.0
+        for category_weight, category in (
+            (BUY_QUALITY_TREND_WEIGHT, trend),
+            (BUY_QUALITY_FLOW_WEIGHT, flow),
+            (BUY_QUALITY_MOMENTUM_WEIGHT, momentum),
+            (BUY_QUALITY_VOLATILITY_WEIGHT, volatility),
+            (BUY_QUALITY_STRENGTH_WEIGHT, strength),
+        ):
+            if category.component_count <= 0:
+                continue
+            weighted_score += category_weight * category.score
+            weighted_denominator += category_weight
+        if weighted_denominator > 0:
+            weighted_score /= weighted_denominator
+
         if benchmark is not None and benchmark.ema_fast is not None and benchmark.ema_slow is not None:
-            checks.append(benchmark.ema_fast >= benchmark.ema_slow)
+            benchmark_alignment = 1.0 if benchmark.ema_fast >= benchmark.ema_slow else 0.35
+            weighted_score = min(1.0, weighted_score + (0.05 * benchmark_alignment))
 
-        if not checks:
-            return 0.0
+        weighted_score = _clamp(weighted_score)
+        reasons = trend.reasons + flow.reasons + momentum.reasons + volatility.reasons + strength.reasons
+        supportive_signals = (
+            trend.supportive_signals
+            + flow.supportive_signals
+            + momentum.supportive_signals
+            + volatility.supportive_signals
+            + strength.supportive_signals
+        )
+        component_count = (
+            trend.component_count
+            + flow.component_count
+            + momentum.component_count
+            + volatility.component_count
+            + strength.component_count
+        )
+        return QualitySlice(
+            score=weighted_score,
+            supportive_signals=supportive_signals,
+            component_count=component_count,
+            reasons=reasons,
+        )
 
-        return sum(1 for check in checks if check) / len(checks)
+    def _trend_quality_slice(self, snapshot: IndicatorSnapshot) -> QualitySlice:
+        components: list[tuple[str, float, bool]] = []
+        if snapshot.vwap is not None:
+            score = 1.0 if snapshot.close >= snapshot.vwap else 0.25
+            components.append(("trend:vwap-aligned", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if snapshot.ema_fast is not None and snapshot.ema_slow is not None:
+            score = 1.0 if snapshot.ema_fast > snapshot.ema_slow else 0.2
+            components.append(("trend:ema-aligned", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if snapshot.sma_fast is not None and snapshot.sma_slow is not None:
+            score = 1.0 if snapshot.sma_fast >= snapshot.sma_slow else 0.2
+            components.append(("trend:sma-aligned", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if not components:
+            return QualitySlice(score=0.0, supportive_signals=0, component_count=0, reasons=())
+        score = sum(component_score for _, component_score, _ in components) / len(components)
+        reasons = tuple(reason for reason, _, supportive in components if supportive)
+        supportive = sum(1 for _, _, is_supportive in components if is_supportive)
+        return QualitySlice(score=score, supportive_signals=supportive, component_count=len(components), reasons=reasons)
+
+    def _flow_quality_slice(self, snapshot: IndicatorSnapshot) -> QualitySlice:
+        components: list[tuple[str, float, bool]] = []
+        if snapshot.relative_volume is not None:
+            if snapshot.relative_volume >= 1.5:
+                score = 1.0
+            elif snapshot.relative_volume >= 1.1:
+                score = 0.85
+            elif snapshot.relative_volume >= BUY_QUALITY_RELATIVE_VOLUME_MIN:
+                score = 0.7
+            elif snapshot.relative_volume >= 0.8:
+                score = 0.4
+            else:
+                score = 0.15
+            components.append(("flow:relative-volume-confirmed", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if snapshot.vwap is not None:
+            score = 1.0 if snapshot.close >= snapshot.vwap else 0.3
+            components.append(("flow:vwap-reclaim", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if snapshot.obv is not None and isfinite(snapshot.obv):
+            score = 1.0 if snapshot.obv > 0 else 0.2
+            components.append(("flow:obv-positive", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if snapshot.volume_profile is not None:
+            if snapshot.volume_profile >= 0.25:
+                score = 1.0
+            elif snapshot.volume_profile >= BUY_QUALITY_VOLUME_PROFILE_MIN:
+                score = 0.8
+            elif snapshot.volume_profile >= 0.1:
+                score = 0.45
+            else:
+                score = 0.2
+            components.append(("flow:volume-profile-supportive", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if not components:
+            return QualitySlice(score=0.0, supportive_signals=0, component_count=0, reasons=())
+        score = sum(component_score for _, component_score, _ in components) / len(components)
+        reasons = tuple(reason for reason, _, supportive in components if supportive)
+        supportive = sum(1 for _, _, is_supportive in components if is_supportive)
+        return QualitySlice(score=score, supportive_signals=supportive, component_count=len(components), reasons=reasons)
+
+    def _momentum_quality_slice(self, snapshot: IndicatorSnapshot) -> QualitySlice:
+        components: list[tuple[str, float, bool]] = []
+        if snapshot.rsi is not None:
+            if 50 <= snapshot.rsi <= 65:
+                score = 1.0
+            elif 45 <= snapshot.rsi < 70:
+                score = 0.75
+            elif 35 <= snapshot.rsi < 75:
+                score = 0.45
+            else:
+                score = 0.2
+            components.append(("momentum:rsi-healthy", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if snapshot.macd is not None and snapshot.macd_signal is not None and snapshot.macd_histogram is not None:
+            if snapshot.macd > snapshot.macd_signal and snapshot.macd_histogram > 0:
+                score = 1.0
+            elif snapshot.macd_histogram >= 0:
+                score = 0.7
+            elif snapshot.macd > snapshot.macd_signal:
+                score = 0.5
+            else:
+                score = 0.2
+            components.append(("momentum:macd-positive", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if snapshot.stochastic_k is not None and snapshot.stochastic_d is not None:
+            if snapshot.stochastic_k > snapshot.stochastic_d and snapshot.stochastic_k < 80:
+                score = 1.0
+            elif snapshot.stochastic_k > snapshot.stochastic_d:
+                score = 0.7
+            elif snapshot.stochastic_k < 30 and snapshot.stochastic_k <= snapshot.stochastic_d:
+                score = 0.45
+            else:
+                score = 0.2
+            components.append(("momentum:stochastic-rising", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if not components:
+            return QualitySlice(score=0.0, supportive_signals=0, component_count=0, reasons=())
+        score = sum(component_score for _, component_score, _ in components) / len(components)
+        reasons = tuple(reason for reason, _, supportive in components if supportive)
+        supportive = sum(1 for _, _, is_supportive in components if is_supportive)
+        return QualitySlice(score=score, supportive_signals=supportive, component_count=len(components), reasons=reasons)
+
+    def _volatility_quality_slice(self, snapshot: IndicatorSnapshot) -> QualitySlice:
+        components: list[tuple[str, float, bool]] = []
+        if snapshot.atr is not None and snapshot.close > 0 and isfinite(snapshot.atr):
+            atr_ratio = snapshot.atr / snapshot.close
+            if 0.012 <= atr_ratio <= 0.03:
+                score = 1.0
+            elif 0.008 <= atr_ratio <= 0.04:
+                score = 0.75
+            elif atr_ratio < 0.008:
+                score = 0.35
+            else:
+                score = 0.55
+            components.append(("volatility:range-expanding", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if snapshot.bollinger_middle is not None and snapshot.bollinger_upper is not None and snapshot.bollinger_lower is not None:
+            if snapshot.close >= snapshot.bollinger_middle and snapshot.close < snapshot.bollinger_upper:
+                score = 1.0
+            elif snapshot.close >= snapshot.bollinger_upper:
+                score = 0.75
+            elif snapshot.close >= snapshot.bollinger_middle:
+                score = 0.65
+            elif snapshot.close < snapshot.bollinger_lower:
+                score = 0.2
+            else:
+                score = 0.4
+            components.append(("volatility:above-bollinger-mid", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if not components:
+            return QualitySlice(score=0.0, supportive_signals=0, component_count=0, reasons=())
+        score = sum(component_score for _, component_score, _ in components) / len(components)
+        reasons = tuple(reason for reason, _, supportive in components if supportive)
+        supportive = sum(1 for _, _, is_supportive in components if is_supportive)
+        return QualitySlice(score=score, supportive_signals=supportive, component_count=len(components), reasons=reasons)
+
+    def _strength_quality_slice(self, snapshot: IndicatorSnapshot) -> QualitySlice:
+        components: list[tuple[str, float, bool]] = []
+        if snapshot.adx is not None and isfinite(snapshot.adx):
+            if snapshot.adx >= 25:
+                score = 1.0
+            elif snapshot.adx >= 20:
+                score = 0.8
+            elif snapshot.adx >= 15:
+                score = 0.5
+            else:
+                score = 0.2
+            components.append(("strength:adx-supportive", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if snapshot.plus_di is not None and snapshot.minus_di is not None:
+            score = 1.0 if snapshot.plus_di >= snapshot.minus_di else 0.2
+            components.append(("strength:directional-pressure", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if not components:
+            return QualitySlice(score=0.0, supportive_signals=0, component_count=0, reasons=())
+        score = sum(component_score for _, component_score, _ in components) / len(components)
+        reasons = tuple(reason for reason, _, supportive in components if supportive)
+        supportive = sum(1 for _, _, is_supportive in components if is_supportive)
+        return QualitySlice(score=score, supportive_signals=supportive, component_count=len(components), reasons=reasons)
 
     def _buy_signal_tier(
         self,
         entry_score: float,
         risk_score: float,
         quality_score: float,
+        supportive_signals: int,
         session_risk: float,
         strong_exit_pressure: bool,
     ) -> SignalTier | None:
@@ -656,24 +856,28 @@ class SignalEngine:
             entry_score >= BUY_TIER_CONVICTION_ENTRY + opening_penalty
             and risk_score <= BUY_TIER_CONVICTION_MAX_RISK
             and quality_score >= BUY_TIER_CONVICTION_QUALITY + tier_quality_penalty
+            and supportive_signals >= BUY_TIER_CONVICTION_MIN_SUPPORTING_SIGNALS
         ):
             return SignalTier.CONVICTION_BUY
         if (
             entry_score >= BUY_TIER_BALANCED_ENTRY + opening_penalty
             and risk_score <= BUY_TIER_BALANCED_MAX_RISK
             and quality_score >= BUY_TIER_BALANCED_QUALITY + tier_quality_penalty
+            and supportive_signals >= BUY_TIER_BALANCED_MIN_SUPPORTING_SIGNALS
         ):
             return SignalTier.BALANCED_BUY
         if (
             entry_score >= BUY_TIER_OPPORTUNISTIC_ENTRY + opening_penalty
             and risk_score <= BUY_TIER_OPPORTUNISTIC_MAX_RISK
             and quality_score >= BUY_TIER_OPPORTUNISTIC_QUALITY + tier_quality_penalty + high_risk_penalty
+            and supportive_signals >= BUY_TIER_OPPORTUNISTIC_MIN_SUPPORTING_SIGNALS
         ):
             return SignalTier.OPPORTUNISTIC_BUY
         if (
             entry_score >= BUY_TIER_SPECULATIVE_ENTRY + opening_penalty
             and risk_score <= BUY_TIER_SPECULATIVE_MAX_RISK
             and quality_score >= BUY_TIER_SPECULATIVE_QUALITY + tier_quality_penalty + high_risk_penalty
+            and supportive_signals >= BUY_TIER_SPECULATIVE_MIN_SUPPORTING_SIGNALS
         ):
             return SignalTier.SPECULATIVE_BUY
         return None

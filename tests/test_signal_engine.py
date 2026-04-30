@@ -60,13 +60,46 @@ def test_signal_engine_raises_buy_alert_when_trend_is_aligned() -> None:
     assert decision.signal_tier is not None
 
 
+def test_signal_engine_allows_buy_with_a_few_strong_categories() -> None:
+    snapshot = IndicatorSnapshot(
+        symbol="AAPL",
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
+        close=190.5,
+        sma_fast=189.8,
+        sma_slow=190.2,
+        ema_fast=190.7,
+        ema_slow=189.9,
+        vwap=190.1,
+        rsi=59.0,
+        atr=1.15,
+        plus_di=24.0,
+        minus_di=19.0,
+        adx=21.0,
+        macd=0.42,
+        macd_signal=0.31,
+        macd_histogram=0.11,
+        stochastic_k=48.0,
+        stochastic_d=43.0,
+        relative_volume=1.12,
+        volume_profile=0.18,
+    )
+
+    decision = SignalEngine().evaluate(snapshot, TradeState.FLAT)
+
+    assert decision.action is SignalAction.BUY_ALERT
+    assert decision.signal_tier is not None
+    assert any(reason.startswith("trend:") for reason in decision.reasons)
+    assert any(reason.startswith("flow:") for reason in decision.reasons)
+    assert any(reason.startswith("momentum:") for reason in decision.reasons)
+
+
 def test_signal_engine_classifies_buy_tiers_by_strength() -> None:
     engine = SignalEngine()
 
-    assert engine._buy_signal_tier(0.84, 0.32, 0.80, 0.40, False) is SignalTier.CONVICTION_BUY
-    assert engine._buy_signal_tier(0.74, 0.44, 0.64, 0.40, False) is SignalTier.BALANCED_BUY
-    assert engine._buy_signal_tier(0.64, 0.62, 0.60, 0.55, True) is SignalTier.OPPORTUNISTIC_BUY
-    assert engine._buy_signal_tier(0.57, 0.81, 0.55, 0.55, True) is SignalTier.SPECULATIVE_BUY
+    assert engine._buy_signal_tier(0.84, 0.32, 0.80, 4, 0.40, False) is SignalTier.CONVICTION_BUY
+    assert engine._buy_signal_tier(0.74, 0.44, 0.64, 3, 0.40, False) is SignalTier.BALANCED_BUY
+    assert engine._buy_signal_tier(0.64, 0.62, 0.60, 2, 0.55, True) is SignalTier.OPPORTUNISTIC_BUY
+    assert engine._buy_signal_tier(0.57, 0.81, 0.55, 2, 0.55, True) is SignalTier.SPECULATIVE_BUY
 
 
 def test_signal_engine_vetoes_entries_when_exit_pressure_is_high() -> None:
@@ -189,27 +222,27 @@ def test_signal_engine_opening_session_penalty_boundaries(session_risk: float, e
 
 
 @pytest.mark.parametrize(
-    ("entry_score", "risk_score", "quality_score", "session_risk", "expected_tier"),
+    ("entry_score", "risk_score", "quality_score", "supportive_signals", "expected_tier"),
     [
-        (BUY_TIER_CONVICTION_ENTRY, 0.3, BUY_TIER_CONVICTION_QUALITY, 0.0, SignalTier.CONVICTION_BUY),
-        (BUY_TIER_CONVICTION_ENTRY, 0.3, BUY_TIER_CONVICTION_QUALITY - 0.01, 0.0, SignalTier.BALANCED_BUY),
-        (BUY_TIER_BALANCED_ENTRY, 0.4, BUY_TIER_BALANCED_QUALITY, 0.0, SignalTier.BALANCED_BUY),
-        (BUY_TIER_BALANCED_ENTRY, 0.4, BUY_TIER_BALANCED_QUALITY - 0.01, 0.0, SignalTier.OPPORTUNISTIC_BUY),
-        (BUY_TIER_OPPORTUNISTIC_ENTRY, 0.6, BUY_TIER_OPPORTUNISTIC_QUALITY, 0.0, SignalTier.OPPORTUNISTIC_BUY),
-        (BUY_TIER_OPPORTUNISTIC_ENTRY, 0.6, BUY_TIER_OPPORTUNISTIC_QUALITY - 0.01, 0.0, SignalTier.SPECULATIVE_BUY),
-        (BUY_TIER_SPECULATIVE_ENTRY, 0.7, BUY_TIER_SPECULATIVE_QUALITY, 0.0, SignalTier.SPECULATIVE_BUY),
-        (BUY_TIER_SPECULATIVE_ENTRY - 0.01, 0.8, BUY_TIER_SPECULATIVE_QUALITY, 0.0, None),
+        (BUY_TIER_CONVICTION_ENTRY, 0.3, BUY_TIER_CONVICTION_QUALITY, 4, SignalTier.CONVICTION_BUY),
+        (BUY_TIER_CONVICTION_ENTRY, 0.3, BUY_TIER_CONVICTION_QUALITY - 0.01, 3, SignalTier.BALANCED_BUY),
+        (BUY_TIER_BALANCED_ENTRY, 0.4, BUY_TIER_BALANCED_QUALITY, 3, SignalTier.BALANCED_BUY),
+        (BUY_TIER_BALANCED_ENTRY, 0.4, BUY_TIER_BALANCED_QUALITY - 0.01, 2, SignalTier.OPPORTUNISTIC_BUY),
+        (BUY_TIER_OPPORTUNISTIC_ENTRY, 0.6, BUY_TIER_OPPORTUNISTIC_QUALITY, 2, SignalTier.OPPORTUNISTIC_BUY),
+        (BUY_TIER_OPPORTUNISTIC_ENTRY, 0.6, BUY_TIER_OPPORTUNISTIC_QUALITY - 0.01, 2, SignalTier.SPECULATIVE_BUY),
+        (BUY_TIER_SPECULATIVE_ENTRY, 0.7, BUY_TIER_SPECULATIVE_QUALITY, 2, SignalTier.SPECULATIVE_BUY),
+        (BUY_TIER_SPECULATIVE_ENTRY - 0.01, 0.8, BUY_TIER_SPECULATIVE_QUALITY, 2, None),
     ],
 )
 def test_signal_engine_buy_tier_threshold_constants(
     entry_score: float,
     risk_score: float,
     quality_score: float,
-    session_risk: float,
+    supportive_signals: int,
     expected_tier: SignalTier | None,
 ) -> None:
     engine = SignalEngine()
-    assert engine._buy_signal_tier(entry_score, risk_score, quality_score, session_risk, False) is expected_tier
+    assert engine._buy_signal_tier(entry_score, risk_score, quality_score, supportive_signals, 0.0, False) is expected_tier
 
 
 def test_signal_engine_preserves_strong_setup_coverage_across_session_penalty() -> None:
