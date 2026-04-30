@@ -36,6 +36,9 @@ BUY_QUALITY_RSI_MAX = 70.0
 BUY_QUALITY_STOCHASTIC_MAX = 85.0
 BUY_QUALITY_RELATIVE_VOLUME_MIN = 0.95
 BUY_QUALITY_VOLUME_PROFILE_MIN = 0.15
+BUY_QUALITY_MOMENTUM_RSI_MIN = BUY_QUALITY_RSI_MIN
+BUY_QUALITY_MOMENTUM_RSI_MAX = BUY_QUALITY_RSI_MAX
+BUY_QUALITY_STOCHASTIC_RISING_MAX = BUY_QUALITY_STOCHASTIC_MAX
 BUY_QUALITY_SUPPORT_THRESHOLD = 0.7
 BUY_QUALITY_MIN_SUPPORTING_SIGNALS = 2
 BUY_QUALITY_TREND_WEIGHT = 0.4
@@ -117,7 +120,7 @@ class SignalEngine:
         dm_entry, dm_exit = self._dm_bias(snapshot.plus_di, snapshot.minus_di, snapshot.adx)
         macd_entry, macd_exit = self._macd_bias(snapshot.macd, snapshot.macd_signal, snapshot.macd_histogram)
         stochastic_entry, stochastic_exit = self._stochastic_bias(snapshot.stochastic_k, snapshot.stochastic_d)
-        obv_entry, obv_exit = self._obv_bias(snapshot.obv, snapshot.relative_volume, snapshot.volume_profile)
+        obv_entry, obv_exit = self._obv_bias(snapshot.obv, snapshot.obv_delta, snapshot.relative_volume, snapshot.volume_profile)
         relative_volume_entry, relative_volume_exit = self._relative_volume_bias(snapshot.relative_volume)
         volume_profile_entry, volume_profile_exit = self._volume_profile_bias(snapshot.volume_profile)
         benchmark_entry, benchmark_exit, benchmark_reason = self._benchmark_bias(snapshot, benchmark)
@@ -395,16 +398,21 @@ class SignalEngine:
     def _obv_bias(
         self,
         _obv: float | None,
+        obv_delta: float | None,
         relative_volume: float | None,
         volume_profile: float | None,
     ) -> tuple[float, float]:
         if _obv is None or not isfinite(_obv):
             return 0.0, 0.0
-        if _obv > 0 and relative_volume is not None and relative_volume >= 1.1 and volume_profile is not None and volume_profile >= 0.18:
+        if obv_delta is not None and isfinite(obv_delta) and obv_delta > 0 and relative_volume is not None and relative_volume >= 1.1 and volume_profile is not None and volume_profile >= 0.18:
             return 0.6, -0.1
-        if _obv < 0 and relative_volume is not None and relative_volume < 0.9 and (volume_profile is None or volume_profile < 0.15):
+        if obv_delta is not None and isfinite(obv_delta) and obv_delta < 0 and relative_volume is not None and relative_volume < 0.9 and (volume_profile is None or volume_profile < 0.15):
             return -0.5, 0.7
-        return 0.1, 0.1
+        if _obv > 0:
+            return 0.1, 0.1
+        if _obv < 0:
+            return -0.1, 0.2
+        return 0.0, 0.0
 
     def _relative_volume_bias(self, relative_volume: float | None) -> tuple[float, float]:
         if relative_volume is None or not isfinite(relative_volume):
@@ -628,6 +636,7 @@ class SignalEngine:
             "bollinger_upper": snapshot.bollinger_upper,
             "bollinger_lower": snapshot.bollinger_lower,
             "obv": snapshot.obv,
+            "obv_delta": snapshot.obv_delta,
             "relative_volume": snapshot.relative_volume,
             "volume_profile": snapshot.volume_profile,
         }
@@ -723,11 +732,11 @@ class SignalEngine:
             else:
                 score = 0.15
             components.append(("flow:relative-volume-confirmed", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
-        if snapshot.vwap is not None:
-            score = 1.0 if snapshot.close >= snapshot.vwap else 0.3
-            components.append(("flow:vwap-reclaim", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
         if snapshot.obv is not None and isfinite(snapshot.obv):
-            score = 1.0 if snapshot.obv > 0 else 0.2
+            if snapshot.obv_delta is not None and isfinite(snapshot.obv_delta):
+                score = 1.0 if snapshot.obv_delta > 0 else 0.2
+            else:
+                score = 1.0 if snapshot.obv > 0 else 0.2
             components.append(("flow:obv-positive", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
         if snapshot.volume_profile is not None:
             if snapshot.volume_profile >= 0.25:
@@ -749,9 +758,9 @@ class SignalEngine:
     def _momentum_quality_slice(self, snapshot: IndicatorSnapshot) -> QualitySlice:
         components: list[tuple[str, float, bool]] = []
         if snapshot.rsi is not None:
-            if 50 <= snapshot.rsi <= 65:
+            if BUY_QUALITY_MOMENTUM_RSI_MIN <= snapshot.rsi <= 65:
                 score = 1.0
-            elif 45 <= snapshot.rsi < 70:
+            elif 45 <= snapshot.rsi < BUY_QUALITY_MOMENTUM_RSI_MAX:
                 score = 0.75
             elif 35 <= snapshot.rsi < 75:
                 score = 0.45
@@ -769,7 +778,7 @@ class SignalEngine:
                 score = 0.2
             components.append(("momentum:macd-positive", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
         if snapshot.stochastic_k is not None and snapshot.stochastic_d is not None:
-            if snapshot.stochastic_k > snapshot.stochastic_d and snapshot.stochastic_k < 80:
+            if snapshot.stochastic_k > snapshot.stochastic_d and snapshot.stochastic_k < BUY_QUALITY_STOCHASTIC_RISING_MAX:
                 score = 1.0
             elif snapshot.stochastic_k > snapshot.stochastic_d:
                 score = 0.7
@@ -799,16 +808,14 @@ class SignalEngine:
                 score = 0.55
             components.append(("volatility:range-expanding", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
         if snapshot.bollinger_middle is not None and snapshot.bollinger_upper is not None and snapshot.bollinger_lower is not None:
-            if snapshot.close >= snapshot.bollinger_middle and snapshot.close < snapshot.bollinger_upper:
+            if snapshot.close >= snapshot.bollinger_upper:
                 score = 1.0
-            elif snapshot.close >= snapshot.bollinger_upper:
-                score = 0.75
             elif snapshot.close >= snapshot.bollinger_middle:
+                score = 0.75
+            elif snapshot.close >= snapshot.bollinger_lower:
                 score = 0.65
-            elif snapshot.close < snapshot.bollinger_lower:
-                score = 0.2
             else:
-                score = 0.4
+                score = 0.2
             components.append(("volatility:above-bollinger-mid", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
         if not components:
             return QualitySlice(score=0.0, supportive_signals=0, component_count=0, reasons=())

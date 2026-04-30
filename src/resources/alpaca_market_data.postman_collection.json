@@ -8,7 +8,7 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "https://data.alpaca.markets"
+      "value": "data.alpaca.markets"
     },
     {
       "key": "api_key_id",
@@ -59,7 +59,8 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/v2/stocks/bars?symbols={{symbols}}&timeframe={{timeframe}}&start={{start}}&limit={{limit}}&adjustment=raw&feed={{feed}}&sort=asc",
+          "raw": "https://{{base_url}}/v2/stocks/bars?symbols={{symbols}}&timeframe={{timeframe}}&start={{start}}&limit={{limit}}&adjustment=raw&feed={{feed}}&sort=asc",
+          "protocol": "https",
           "host": [
             "{{base_url}}"
           ],
@@ -116,7 +117,8 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/v2/stocks/bars/latest?symbols={{symbols}}&feed={{feed}}",
+          "raw": "https://{{base_url}}/v2/stocks/bars/latest?symbols={{symbols}}&feed={{feed}}",
+          "protocol": "https",
           "host": [
             "{{base_url}}"
           ],

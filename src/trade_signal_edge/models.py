@@ -67,6 +67,7 @@ class IndicatorSnapshot:
     bollinger_upper: Optional[float] = None
     bollinger_lower: Optional[float] = None
     obv: Optional[float] = None
+    obv_delta: Optional[float] = None
     relative_volume: Optional[float] = None
     volume_profile: Optional[float] = None
 
