@@ -1,0 +1,145 @@
+{
+  "info": {
+    "name": "Alpaca Market Data",
+    "_postman_id": "b2a9d5b5-4a3d-4c1a-bde8-2f2f9a36f4b7",
+    "description": "Collection for the Alpaca market-data calls used by the edge service.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "data.alpaca.markets"
+    },
+    {
+      "key": "api_key_id",
+      "value": ""
+    },
+    {
+      "key": "api_secret_key",
+      "value": ""
+    },
+    {
+      "key": "symbol",
+      "value": "AAPL"
+    },
+    {
+      "key": "symbols",
+      "value": "AAPL"
+    },
+    {
+      "key": "timeframe",
+      "value": "1Min"
+    },
+    {
+      "key": "feed",
+      "value": "iex"
+    },
+    {
+      "key": "start",
+      "value": "2026-04-30T13:30:00Z"
+    },
+    {
+      "key": "limit",
+      "value": "60"
+    }
+  ],
+  "item": [
+    {
+      "name": "Stock Bars",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "APCA-API-KEY-ID",
+            "value": "{{api_key_id}}"
+          },
+          {
+            "key": "APCA-API-SECRET-KEY",
+            "value": "{{api_secret_key}}"
+          }
+        ],
+        "url": {
+          "raw": "https://{{base_url}}/v2/stocks/bars?symbols={{symbols}}&timeframe={{timeframe}}&start={{start}}&limit={{limit}}&adjustment=raw&feed={{feed}}&sort=asc",
+          "protocol": "https",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "v2",
+            "stocks",
+            "bars"
+          ],
+          "query": [
+            {
+              "key": "symbols",
+              "value": "{{symbols}}"
+            },
+            {
+              "key": "timeframe",
+              "value": "{{timeframe}}"
+            },
+            {
+              "key": "start",
+              "value": "{{start}}"
+            },
+            {
+              "key": "limit",
+              "value": "{{limit}}"
+            },
+            {
+              "key": "adjustment",
+              "value": "raw"
+            },
+            {
+              "key": "feed",
+              "value": "{{feed}}"
+            },
+            {
+              "key": "sort",
+              "value": "asc"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Latest Stock Bars",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "APCA-API-KEY-ID",
+            "value": "{{api_key_id}}"
+          },
+          {
+            "key": "APCA-API-SECRET-KEY",
+            "value": "{{api_secret_key}}"
+          }
+        ],
+        "url": {
+          "raw": "https://{{base_url}}/v2/stocks/bars/latest?symbols={{symbols}}&feed={{feed}}",
+          "protocol": "https",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "v2",
+            "stocks",
+            "bars",
+            "latest"
+          ],
+          "query": [
+            {
+              "key": "symbols",
+              "value": "{{symbols}}"
+            },
+            {
+              "key": "feed",
+              "value": "{{feed}}"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

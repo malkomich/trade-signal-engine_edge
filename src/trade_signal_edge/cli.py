@@ -722,6 +722,7 @@ def _build_market_snapshot_payload(
         "bollinger_upper": snapshot.bollinger_upper,
         "bollinger_lower": snapshot.bollinger_lower,
         "obv": snapshot.obv,
+        "obv_delta": snapshot.obv_delta,
         "relative_volume": snapshot.relative_volume,
         "volume_profile": snapshot.volume_profile,
         "entry_score": entry_score,

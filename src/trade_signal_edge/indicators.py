@@ -79,6 +79,7 @@ class IndicatorCalculator:
         close_delta = close.diff().fillna(0)
         obv_direction = np.sign(close_delta)
         obv = (obv_direction * volume).cumsum()
+        obv_delta = obv.diff()
 
         volume_average = volume.rolling(self.bollinger_period).mean()
         relative_volume = volume / volume_average.replace(0, np.nan)
@@ -174,6 +175,7 @@ class IndicatorCalculator:
             bollinger_upper=_last_value(bollinger_upper),
             bollinger_lower=_last_value(bollinger_lower),
             obv=_last_value(obv),
+            obv_delta=_last_value(obv_delta),
             relative_volume=_last_value(relative_volume),
             volume_profile=_last_value(volume_profile),
         )
