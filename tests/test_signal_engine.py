@@ -211,6 +211,144 @@ def test_signal_engine_rejects_buy_when_macd_is_bearish() -> None:
     assert decision.action is SignalAction.HOLD
 
 
+def test_signal_engine_allows_buy_on_oversold_reversal_context() -> None:
+    benchmark = IndicatorSnapshot(
+        symbol="QQQ",
+        timestamp=datetime(2026, 4, 20, 15, 22, tzinfo=timezone.utc),
+        close=506.2,
+        sma_fast=507.4,
+        sma_slow=508.0,
+        ema_fast=506.8,
+        ema_slow=507.9,
+        vwap=507.0,
+        rsi=10.72,
+        atr=4.2,
+        plus_di=14.0,
+        minus_di=24.0,
+        adx=27.0,
+        macd=-1.52,
+        macd_signal=-1.08,
+        macd_histogram=-0.44,
+        stochastic_k=7.89,
+        stochastic_d=9.6,
+        relative_volume=1.32,
+        volume_profile=0.24,
+    )
+    snapshot = IndicatorSnapshot(
+        symbol="TSLA",
+        timestamp=datetime(2026, 4, 20, 15, 22, tzinfo=timezone.utc),
+        close=282.4,
+        sma_fast=283.1,
+        sma_slow=284.0,
+        ema_fast=282.9,
+        ema_slow=283.6,
+        vwap=283.3,
+        rsi=11.4,
+        atr=3.1,
+        plus_di=19.0,
+        minus_di=21.0,
+        adx=24.0,
+        macd=-0.82,
+        macd_signal=-0.51,
+        macd_histogram=-0.31,
+        stochastic_k=8.4,
+        stochastic_d=10.1,
+        relative_volume=1.24,
+        volume_profile=0.21,
+    )
+
+    decision = SignalEngine().evaluate(snapshot, TradeState.FLAT, benchmark=benchmark)
+
+    assert decision.action is SignalAction.BUY_ALERT
+    assert decision.signal_tier is not None
+    assert decision.entry_score > decision.exit_score
+    assert "oversold-reversal-context" in decision.reasons
+
+
+def test_signal_engine_allows_buy_on_benchmark_only_oversold_reversal_context() -> None:
+    benchmark = IndicatorSnapshot(
+        symbol="QQQ",
+        timestamp=datetime(2026, 4, 20, 15, 22, tzinfo=timezone.utc),
+        close=506.2,
+        sma_fast=507.4,
+        sma_slow=508.0,
+        ema_fast=506.8,
+        ema_slow=507.9,
+        vwap=507.0,
+        rsi=10.72,
+        atr=4.2,
+        plus_di=14.0,
+        minus_di=24.0,
+        adx=27.0,
+        macd=-1.52,
+        macd_signal=-1.08,
+        macd_histogram=-0.44,
+        stochastic_k=7.89,
+        stochastic_d=9.6,
+        relative_volume=1.32,
+        volume_profile=0.24,
+    )
+    snapshot = IndicatorSnapshot(
+        symbol="TSLA",
+        timestamp=datetime(2026, 4, 20, 15, 22, tzinfo=timezone.utc),
+        close=282.4,
+        sma_fast=286.1,
+        sma_slow=284.0,
+        ema_fast=285.5,
+        ema_slow=284.8,
+        vwap=284.9,
+        rsi=41.0,
+        atr=3.1,
+        plus_di=19.0,
+        minus_di=21.0,
+        adx=24.0,
+        macd=-0.22,
+        macd_signal=-0.19,
+        macd_histogram=-0.03,
+        stochastic_k=38.0,
+        stochastic_d=35.0,
+        relative_volume=1.18,
+        volume_profile=0.19,
+    )
+
+    decision = SignalEngine().evaluate(snapshot, TradeState.FLAT, benchmark=benchmark)
+
+    assert decision.action is SignalAction.BUY_ALERT
+    assert "oversold-reversal-context" in decision.reasons
+    assert any(reason.startswith("QQQ ") for reason in decision.reasons)
+
+
+def test_signal_engine_scores_oversold_reversal_quality_context() -> None:
+    snapshot = IndicatorSnapshot(
+        symbol="TSLA",
+        timestamp=datetime(2026, 4, 20, 15, 22, tzinfo=timezone.utc),
+        close=282.4,
+        sma_fast=283.1,
+        sma_slow=284.0,
+        ema_fast=282.9,
+        ema_slow=283.6,
+        vwap=283.3,
+        rsi=11.4,
+        atr=3.1,
+        plus_di=19.0,
+        minus_di=21.0,
+        adx=24.0,
+        macd=-0.82,
+        macd_signal=-0.51,
+        macd_histogram=-0.31,
+        stochastic_k=8.4,
+        stochastic_d=10.1,
+        relative_volume=1.24,
+        volume_profile=0.21,
+    )
+
+    quality = SignalEngine()._long_entry_quality_assessment(snapshot, None, True)
+
+    assert quality.score > 0.0
+    assert "trend:oversold-reversal" in quality.reasons
+    assert any(reason.startswith("momentum:") for reason in quality.reasons)
+
+
 def test_signal_engine_uses_configured_entry_exit_margin() -> None:
     snapshot = IndicatorSnapshot(
         symbol="AAPL",
@@ -530,6 +668,8 @@ def test_signal_engine_biases_are_covered_for_rsi_and_stochastic() -> None:
     assert engine._rsi_bias(72.0) == (-1.0, 1.0)
     assert engine._rsi_bias(60.0) == (-0.9, 0.9)
     assert engine._rsi_bias(40.0) == (0.6, -0.1)
+    assert engine._rsi_bias(28.0) == (1.0, -0.4)
+    assert engine._rsi_bias(10.0) == (1.0, -0.6)
     assert engine._stochastic_bias(15.0, 10.0) == (0.9, -0.3)
     assert engine._stochastic_bias(88.0, 85.0) == (-1.0, 1.0)
     assert engine._stochastic_bias(40.0, 35.0) == (0.5, -0.1)
