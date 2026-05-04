@@ -262,7 +262,7 @@ def test_signal_engine_allows_buy_on_oversold_reversal_context() -> None:
     assert decision.action is SignalAction.BUY_ALERT
     assert decision.signal_tier is not None
     assert decision.entry_score > decision.exit_score
-    assert any("oversold reversal" in reason for reason in decision.reasons)
+    assert "oversold-reversal-context" in decision.reasons
 
 
 def test_signal_engine_uses_configured_entry_exit_margin() -> None:

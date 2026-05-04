@@ -45,6 +45,7 @@ BUY_QUALITY_VOLATILITY_WEIGHT = 0.1
 BUY_QUALITY_STRENGTH_WEIGHT = 0.05
 BUY_RSI_OVERSOLD_THRESHOLD = 30.0
 BUY_STOCHASTIC_OVERSOLD_THRESHOLD = 20.0
+BUY_STOCHASTIC_LOW_THRESHOLD = 30.0
 BUY_OVERSOLD_REVERSAL_ENTRY_BONUS = 0.35
 BUY_OVERSOLD_REVERSAL_EXIT_PENALTY = 0.18
 BUY_OVERSOLD_REVERSAL_MACD_ENTRY_BONUS = 0.5
@@ -116,7 +117,7 @@ class SignalEngine:
             entry_raw += buy_weight * entry_value
             exit_raw += sell_weight * exit_value
 
-        bullish_reversal_context = self._bullish_reversal_context(snapshot, benchmark)
+        bullish_reversal_context = self._bullish_reversal_context(snapshot)
         sma_bias = self._trend_bias(snapshot.sma_fast, snapshot.sma_slow, bullish_reversal_context)
         ema_bias = self._trend_bias(snapshot.ema_fast, snapshot.ema_slow, bullish_reversal_context)
         vwap_bias = self._binary_bias(snapshot.close, snapshot.vwap, bullish_reversal_context)
@@ -233,8 +234,8 @@ class SignalEngine:
             strong_exit_pressure = self.is_strong_exit_pressure(snapshot)
         if session_risk is None and snapshot is not None:
             session_risk = self._session_risk(snapshot.timestamp)
-        if bullish_reversal_context is None and snapshot is not None:
-            bullish_reversal_context = self._bullish_reversal_context(snapshot, benchmark)
+        if bullish_reversal_context is None:
+            bullish_reversal_context = self._bullish_reversal_context(snapshot) if snapshot is not None else self._bullish_reversal_context(benchmark)
 
         if state is TradeState.ACCEPTED_OPEN and exit_score >= self.config.exit_threshold:
             reasons: list[str] = []
@@ -337,11 +338,7 @@ class SignalEngine:
                 continue
             if not isfinite(candidate.rsi) or not isfinite(candidate.stochastic_k) or not isfinite(candidate.stochastic_d):
                 continue
-            if (
-                candidate.rsi <= BUY_RSI_OVERSOLD_THRESHOLD
-                and candidate.stochastic_k <= BUY_STOCHASTIC_OVERSOLD_THRESHOLD
-                and candidate.stochastic_k <= candidate.stochastic_d
-            ):
+            if candidate.rsi <= BUY_RSI_OVERSOLD_THRESHOLD and candidate.stochastic_k <= BUY_STOCHASTIC_OVERSOLD_THRESHOLD:
                 return True
         return False
 
@@ -934,7 +931,7 @@ class SignalEngine:
                 score = 1.0
             elif snapshot.stochastic_k > snapshot.stochastic_d:
                 score = 0.4
-            elif snapshot.stochastic_k < BUY_RSI_OVERSOLD_THRESHOLD and snapshot.stochastic_k <= snapshot.stochastic_d:
+            elif snapshot.stochastic_k < BUY_STOCHASTIC_LOW_THRESHOLD and snapshot.stochastic_k <= snapshot.stochastic_d:
                 score = 0.45
             else:
                 score = 0.0
