@@ -42,8 +42,7 @@ The worker also exposes a lightweight status page on `http://localhost:18181/edg
 Raspberry Pi proxy can route `https://tradesignalengine.backend.synapsesea.com/edge` to a
 visible runtime snapshot while Dozzle streams the container logs.
 
-By default the runtime watches a Nasdaq universe of `AAPL`, `AMZN`, `GOOGL`, `META`, `MSFT`,
-`NVDA`, `PLTR`, and `TSLA` against the configured benchmark symbol. Override the universe with
+By default the runtime watches a Nasdaq universe of `TSLA`, `NVDA`, and `META` against the configured benchmark symbol. Override the universe with
 `EDGE_SYMBOLS` and the benchmark with `EDGE_BENCHMARK_SYMBOL` when needed.
 The merge-to-`main` workflow now runs on the Raspberry Pi self-hosted runner, checks out the
 repository on the Pi itself, and recreates the container with the same compose project name.
@@ -56,8 +55,8 @@ make test
 
 ## Environment
 
-- `EDGE_SYMBOL`: primary ticker symbol to monitor, default `AAPL`
-- `EDGE_SYMBOLS`: comma-separated symbol universe to monitor, default `AAPL,AMZN,GOOGL,META,MSFT,NVDA,PLTR,TSLA`
+- `EDGE_SYMBOL`: primary ticker symbol to monitor, default `TSLA`
+- `EDGE_SYMBOLS`: comma-separated symbol universe to monitor, default `TSLA,NVDA,META`
 - `EDGE_BENCHMARK_SYMBOL`: benchmark symbol used as context for scoring, default `QQQ`
 - `EDGE_SESSION_ID`: session identifier used when reading and writing window state, default `nasdaq-live`
 - `EDGE_BARS`: number of bars to fetch, default `240`

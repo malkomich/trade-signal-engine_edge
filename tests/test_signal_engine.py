@@ -245,13 +245,46 @@ def test_signal_config_and_runtime_share_entry_gate_cap_default() -> None:
     assert RuntimeConfig().entry_gate_cap == DEFAULT_ENTRY_GATE_CAP
 
 
+def test_signal_engine_uses_session_entry_exit_margin_from_config() -> None:
+    snapshot = IndicatorSnapshot(
+        symbol="TSLA",
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
+        close=198.0,
+        sma_fast=197.5,
+        sma_slow=196.9,
+        ema_fast=197.6,
+        ema_slow=197.0,
+        vwap=197.2,
+        rsi=34.0,
+        atr=1.9,
+        plus_di=25.0,
+        minus_di=16.0,
+        adx=24.0,
+        macd=0.58,
+        macd_signal=0.45,
+        macd_histogram=0.13,
+        stochastic_k=49.0,
+        stochastic_d=43.0,
+    )
+
+    loose = SignalEngine(
+        SignalConfig(entry_threshold=0.65, exit_threshold=0.55, entry_exit_margin=0.0)
+    ).evaluate(snapshot, TradeState.FLAT)
+    strict = SignalEngine(
+        SignalConfig(entry_threshold=0.65, exit_threshold=0.55, entry_exit_margin=0.8)
+    ).evaluate(snapshot, TradeState.FLAT)
+
+    assert loose.action is SignalAction.BUY_ALERT
+    assert strict.action is SignalAction.HOLD
+
+
 @pytest.mark.parametrize(
     ("session_risk", "entry_score", "expected_action"),
     [
         (0.95, 0.63, SignalAction.HOLD),
-        (0.95, 0.69, SignalAction.BUY_ALERT),
+        (0.95, 0.69, SignalAction.HOLD),
         (0.85, 0.57, SignalAction.HOLD),
-        (0.85, 0.63, SignalAction.BUY_ALERT),
+        (0.85, 0.63, SignalAction.HOLD),
     ],
 )
 def test_signal_engine_applies_session_risk_to_entry_gate_boundaries(

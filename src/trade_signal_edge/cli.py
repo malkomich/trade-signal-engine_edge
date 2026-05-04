@@ -95,6 +95,13 @@ def _parse_symbols(value: Any, fallback: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(symbols))
 
 
+def _filter_allowed_symbols(symbols: tuple[str, ...], fallback: tuple[str, ...]) -> tuple[str, ...]:
+    allowed = tuple(symbol for symbol in symbols if symbol in ALLOWED_OPERATIONAL_SYMBOLS)
+    if allowed:
+        return allowed
+    return fallback
+
+
 def _build_timeframe_series(series: list[Any]) -> dict[str, list[Any]]:
     return {
         timeframe: (series if timeframe == "1m" else resample_bars(series, int(timeframe[:-1])))
@@ -173,7 +180,14 @@ def _runtime_from_session_config(runtime, payload: object):
     if not field_map:
         field_map = {}
 
-    symbols = _parse_symbols(field_map.get("monitored_symbols"), runtime.symbols)
+    parsed_symbols = _parse_symbols(field_map.get("monitored_symbols"), runtime.symbols)
+    symbols = _filter_allowed_symbols(parsed_symbols, runtime.symbols)
+    unsupported_symbols = tuple(symbol for symbol in parsed_symbols if symbol not in ALLOWED_OPERATIONAL_SYMBOLS)
+    if unsupported_symbols:
+        logger.warning(
+            "Ignoring unsupported session symbols: %s",
+            ", ".join(unsupported_symbols),
+        )
     benchmark_symbol = str(field_map.get("benchmark_symbol") or runtime.benchmark_symbol).strip().upper() or runtime.benchmark_symbol
     session_timezone = str(field_map.get("session_timezone") or runtime.session_timezone).strip() or runtime.session_timezone
     entry_threshold = _parse_float(
@@ -230,11 +244,11 @@ def _runtime_from_session_config(runtime, payload: object):
         entry_gate_cap=_parse_float(field_map.get("entry_gate_cap"), runtime.entry_gate_cap),
         buy_signal_weights=buy_signal_weights,
         sell_signal_weights=sell_signal_weights,
-        buy_timeframe_weights=buy_timeframe_weights,
-        sell_timeframe_weights=sell_timeframe_weights,
-        optimizer_learning_rate=optimizer_learning_rate,
-        optimizer_bias_cap=optimizer_bias_cap,
-        entry_profile=entry_profile,
+    buy_timeframe_weights=buy_timeframe_weights,
+    sell_timeframe_weights=sell_timeframe_weights,
+    optimizer_learning_rate=optimizer_learning_rate,
+    optimizer_bias_cap=optimizer_bias_cap,
+    entry_profile=entry_profile,
         exit_profile=exit_profile,
     )
 
@@ -357,6 +371,7 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
         config=SignalConfig(
             entry_threshold=runtime.entry_threshold,
             exit_threshold=runtime.exit_threshold,
+            entry_exit_margin=runtime.entry_exit_margin,
             buy_weights=runtime.buy_signal_weights,
             sell_weights=runtime.sell_signal_weights,
             buy_timeframe_weights=runtime.buy_timeframe_weights,

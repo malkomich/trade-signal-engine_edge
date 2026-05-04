@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Mapping, Optional
 
 
-DEFAULT_ENTRY_GATE_CAP = 0.52
+DEFAULT_ENTRY_GATE_CAP = 0.62
 
 
 class TradeState(str, Enum):
