@@ -327,17 +327,6 @@ class SignalEngine:
             return True
         if aligned_votes == 0:
             return False
-        if (
-            snapshot.vwap is not None
-            and snapshot.ema_fast is not None
-            and snapshot.ema_slow is not None
-            and snapshot.sma_fast is not None
-            and snapshot.sma_slow is not None
-            and snapshot.close < snapshot.vwap
-            and snapshot.ema_fast <= snapshot.ema_slow
-            and snapshot.sma_fast <= snapshot.sma_slow
-        ):
-            return False
         return True
 
     def _sell_pressure_bias(self, snapshot: IndicatorSnapshot) -> float:
