@@ -117,7 +117,7 @@ class SignalEngine:
             entry_raw += buy_weight * entry_value
             exit_raw += sell_weight * exit_value
 
-        bullish_reversal_context = self._bullish_reversal_context(snapshot)
+        bullish_reversal_context = self._bullish_reversal_context(snapshot, benchmark)
         sma_bias = self._trend_bias(snapshot.sma_fast, snapshot.sma_slow, bullish_reversal_context)
         ema_bias = self._trend_bias(snapshot.ema_fast, snapshot.ema_slow, bullish_reversal_context)
         vwap_bias = self._binary_bias(snapshot.close, snapshot.vwap, bullish_reversal_context)
