@@ -392,6 +392,22 @@ def test_signal_engine_relaxes_buy_tier_support_in_oversold_reversal_context() -
     assert tier is SignalTier.SPECULATIVE_BUY
 
 
+def test_signal_engine_uses_speculative_buy_as_tier_floor() -> None:
+    engine = SignalEngine()
+
+    tier = engine._buy_signal_tier(
+        entry_score=0.49,
+        risk_score=0.92,
+        quality_score=0.18,
+        supportive_signals=1,
+        session_risk=0.45,
+        strong_exit_pressure=False,
+        bullish_reversal_context=False,
+    )
+
+    assert tier is SignalTier.SPECULATIVE_BUY
+
+
 def test_signal_engine_uses_configured_entry_exit_margin() -> None:
     snapshot = IndicatorSnapshot(
         symbol="AAPL",
@@ -526,7 +542,7 @@ def test_signal_engine_opening_session_penalty_boundaries(session_risk: float, e
         (BUY_TIER_OPPORTUNISTIC_ENTRY, 0.6, BUY_TIER_OPPORTUNISTIC_QUALITY, 2, SignalTier.OPPORTUNISTIC_BUY),
         (BUY_TIER_OPPORTUNISTIC_ENTRY, 0.6, BUY_TIER_OPPORTUNISTIC_QUALITY - 0.01, 2, SignalTier.SPECULATIVE_BUY),
         (BUY_TIER_SPECULATIVE_ENTRY, 0.7, BUY_TIER_SPECULATIVE_QUALITY, 2, SignalTier.SPECULATIVE_BUY),
-        (BUY_TIER_SPECULATIVE_ENTRY - 0.01, 0.8, BUY_TIER_SPECULATIVE_QUALITY, 2, None),
+        (BUY_TIER_SPECULATIVE_ENTRY - 0.01, 0.8, BUY_TIER_SPECULATIVE_QUALITY, 2, SignalTier.SPECULATIVE_BUY),
     ],
 )
 def test_signal_engine_buy_tier_threshold_constants(

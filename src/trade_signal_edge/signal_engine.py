@@ -1058,4 +1058,4 @@ class SignalEngine:
             and supportive_signals >= speculative_min_support
         ):
             return SignalTier.SPECULATIVE_BUY
-        return None
+        return SignalTier.SPECULATIVE_BUY
