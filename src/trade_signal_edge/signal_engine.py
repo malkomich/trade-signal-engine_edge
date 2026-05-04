@@ -424,9 +424,6 @@ class SignalEngine:
                 score += 0.35
             elif snapshot.stochastic_k >= 75 and snapshot.stochastic_k > snapshot.stochastic_d:
                 score += 0.2
-        if snapshot.rsi is not None and snapshot.stochastic_k is not None:
-            if snapshot.rsi >= 70 and snapshot.stochastic_k >= 80:
-                score += 0.2
         if snapshot.vwap is not None and macd_bearish and snapshot.close < snapshot.vwap:
             score += 0.2
         if snapshot.bollinger_middle is not None and macd_bearish and snapshot.close < snapshot.bollinger_middle:
