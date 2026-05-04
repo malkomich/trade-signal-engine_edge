@@ -8,7 +8,7 @@ import os
 import time
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
-from typing import Any, get_args
+from typing import Any, Callable, get_args
 
 from .api_client import ApiSessionClient
 from .config import ALLOWED_OPERATIONAL_SYMBOLS, load_runtime_config
@@ -49,6 +49,23 @@ SIGNAL_WEIGHT_KEYS = (
     "relative_volume",
     "volume_profile",
 )
+ENTRY_EXECUTION_TIMEFRAMES = ("1m", "5m")
+ENTRY_CONFIRMATION_TIMEFRAMES = ("10m", "15m")
+ENTRY_CONTEXT_TIMEFRAMES = ("30m", "60m")
+REVERSAL_ENTRY_EXECUTION_WEIGHT = 0.65
+REVERSAL_ENTRY_CONFIRMATION_WEIGHT = 0.25
+REVERSAL_ENTRY_CONTEXT_WEIGHT = 0.10
+STANDARD_ENTRY_EXECUTION_WEIGHT = 0.5
+STANDARD_ENTRY_CONFIRMATION_WEIGHT = 0.3
+STANDARD_ENTRY_CONTEXT_WEIGHT = 0.2
+REVERSAL_EXIT_EXECUTION_WEIGHT = 0.7
+REVERSAL_EXIT_CONFIRMATION_WEIGHT = 0.2
+REVERSAL_EXIT_CONTEXT_WEIGHT = 0.1
+STANDARD_EXIT_EXECUTION_WEIGHT = 0.5
+STANDARD_EXIT_CONFIRMATION_WEIGHT = 0.3
+STANDARD_EXIT_CONTEXT_WEIGHT = 0.2
+REVERSAL_EXECUTION_FLOOR_RATIO = 0.75
+REVERSAL_EXIT_CONTEXT_CAP_FLOOR = 0.55
 
 
 def _parse_int_env(name: str, default: int) -> int:
@@ -638,10 +655,6 @@ def _combine_timeframe_decisions(
     state: TradeState,
     benchmark: IndicatorSnapshot | None = None,
 ) -> SignalDecision:
-    entry_total = 0.0
-    exit_total = 0.0
-    buy_weight_sum = 0.0
-    sell_weight_sum = 0.0
     reasons: list[str] = []
     primary_snapshot = snapshots_by_timeframe.get("1m")
 
@@ -649,25 +662,25 @@ def _combine_timeframe_decisions(
         decision = timeframe_decisions.get(timeframe)
         if decision is None:
             continue
-        buy_weight = buy_timeframe_weights.get(timeframe, 0.0)
-        sell_weight = sell_timeframe_weights.get(timeframe, 0.0)
-        if buy_weight <= 0 and sell_weight <= 0:
-            continue
-        buy_weight_sum += buy_weight
-        sell_weight_sum += sell_weight
-        entry_total += buy_weight * decision.entry_score
-        exit_total += sell_weight * decision.exit_score
         if decision.reasons:
             reasons.append(f"{timeframe}:{'; '.join(decision.reasons)}")
 
-    entry_score = entry_total / buy_weight_sum if buy_weight_sum > 0 else 0.0
-    exit_score = exit_total / sell_weight_sum if sell_weight_sum > 0 else 0.0
-
     bullish_reversal_context = signal_engine.is_bullish_reversal_context(primary_snapshot, benchmark) if primary_snapshot is not None else False
+    entry_score = _aggregate_entry_score(
+        timeframe_decisions,
+        buy_timeframe_weights,
+        bullish_reversal_context,
+    )
+    exit_score = _aggregate_exit_score(
+        timeframe_decisions,
+        sell_timeframe_weights,
+        bullish_reversal_context,
+    )
+    pressure_timeframes = TIMEFRAME_KEYS if state is TradeState.ACCEPTED_OPEN else ENTRY_EXECUTION_TIMEFRAMES + ENTRY_CONFIRMATION_TIMEFRAMES
     strong_exit_pressure = any(
-        signal_engine.is_strong_exit_pressure(snapshot, bullish_reversal_context)
-        for snapshot in snapshots_by_timeframe.values()
-        if snapshot is not None
+        signal_engine.is_strong_exit_pressure(snapshots_by_timeframe.get(timeframe), bullish_reversal_context)
+        for timeframe in pressure_timeframes
+        if snapshots_by_timeframe.get(timeframe) is not None
     )
     action, action_reasons, signal_tier = signal_engine.decide_action(
         entry_score,
@@ -692,6 +705,147 @@ def _combine_timeframe_decisions(
         signal_tier=signal_tier,
         reasons=tuple(deduped_reasons),
     )
+
+
+def _aggregate_entry_score(
+    timeframe_decisions: dict[str, SignalDecision],
+    timeframe_weights: dict[str, float],
+    bullish_reversal_context: bool,
+) -> float:
+    execution = _weighted_timeframe_score(
+        timeframe_decisions,
+        timeframe_weights,
+        ENTRY_EXECUTION_TIMEFRAMES,
+        lambda decision: decision.entry_score,
+    )
+    confirmation = _weighted_timeframe_score(
+        timeframe_decisions,
+        timeframe_weights,
+        ENTRY_CONFIRMATION_TIMEFRAMES,
+        lambda decision: decision.entry_score,
+    )
+    context = _weighted_timeframe_score(
+        timeframe_decisions,
+        timeframe_weights,
+        ENTRY_CONTEXT_TIMEFRAMES,
+        lambda decision: decision.entry_score,
+    )
+    if bullish_reversal_context:
+        execution_floor = (execution or 0.0) * REVERSAL_EXECUTION_FLOOR_RATIO
+        confirmation_floor = max(confirmation, execution_floor) if confirmation is not None else execution_floor
+        context_floor = context if context is not None else confirmation_floor
+        protected_context = max(context_floor, confirmation_floor)
+        return round(
+            _blend_scores(
+                (execution, REVERSAL_ENTRY_EXECUTION_WEIGHT),
+                (confirmation, REVERSAL_ENTRY_CONFIRMATION_WEIGHT),
+                (protected_context, REVERSAL_ENTRY_CONTEXT_WEIGHT),
+            ),
+            4,
+        )
+    return round(
+        _blend_scores(
+            (execution, STANDARD_ENTRY_EXECUTION_WEIGHT),
+            (confirmation, STANDARD_ENTRY_CONFIRMATION_WEIGHT),
+            (context, STANDARD_ENTRY_CONTEXT_WEIGHT),
+        ),
+        4,
+    )
+
+
+def _aggregate_exit_score(
+    timeframe_decisions: dict[str, SignalDecision],
+    timeframe_weights: dict[str, float],
+    bullish_reversal_context: bool,
+) -> float:
+    execution = _weighted_timeframe_score(
+        timeframe_decisions,
+        timeframe_weights,
+        ENTRY_EXECUTION_TIMEFRAMES,
+        lambda decision: decision.exit_score,
+    )
+    confirmation = _weighted_timeframe_score(
+        timeframe_decisions,
+        timeframe_weights,
+        ENTRY_CONFIRMATION_TIMEFRAMES,
+        lambda decision: decision.exit_score,
+    )
+    context = _weighted_timeframe_score(
+        timeframe_decisions,
+        timeframe_weights,
+        ENTRY_CONTEXT_TIMEFRAMES,
+        lambda decision: decision.exit_score,
+    )
+    if bullish_reversal_context:
+        dampened_context = _dampen_reversal_exit_context(execution, confirmation, context)
+        return round(
+            _blend_scores(
+                (execution, REVERSAL_EXIT_EXECUTION_WEIGHT),
+                (confirmation, REVERSAL_EXIT_CONFIRMATION_WEIGHT),
+                (dampened_context, REVERSAL_EXIT_CONTEXT_WEIGHT),
+            ),
+            4,
+        )
+    return round(
+        _blend_scores(
+            (execution, STANDARD_EXIT_EXECUTION_WEIGHT),
+            (confirmation, STANDARD_EXIT_CONFIRMATION_WEIGHT),
+            (context, STANDARD_EXIT_CONTEXT_WEIGHT),
+        ),
+        4,
+    )
+
+
+def _weighted_timeframe_score(
+    timeframe_decisions: dict[str, SignalDecision],
+    timeframe_weights: dict[str, float],
+    timeframes: tuple[str, ...],
+    score_accessor: Callable[[SignalDecision], float],
+) -> float | None:
+    total = 0.0
+    total_weight = 0.0
+    for timeframe in timeframes:
+        decision = timeframe_decisions.get(timeframe)
+        if decision is None:
+            continue
+        weight = timeframe_weights.get(timeframe, 0.0)
+        if weight <= 0:
+            continue
+        total += weight * float(score_accessor(decision))
+        total_weight += weight
+    if total_weight <= 0:
+        return None
+    return total / total_weight
+
+
+def _dampen_reversal_exit_context(
+    execution: float | None,
+    confirmation: float | None,
+    context: float | None,
+) -> float:
+    base_cap = max(
+        execution if execution is not None else REVERSAL_EXIT_CONTEXT_CAP_FLOOR,
+        confirmation if confirmation is not None else REVERSAL_EXIT_CONTEXT_CAP_FLOOR,
+        REVERSAL_EXIT_CONTEXT_CAP_FLOOR,
+    )
+    if context is None:
+        return base_cap
+    return min(context, base_cap)
+
+
+def _blend_scores(*parts: tuple[float | None, float]) -> float:
+    total = 0.0
+    total_weight = 0.0
+    for score, weight in parts:
+        if score is None:
+            continue
+        if weight <= 0:
+            continue
+        total += score * weight
+        total_weight += weight
+    if total_weight <= 0:
+        return 0.0
+    return total / total_weight
 
 
 def _build_market_snapshot_payload(

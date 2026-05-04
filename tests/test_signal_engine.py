@@ -377,10 +377,8 @@ def test_signal_engine_scores_oversold_reversal_quality_context() -> None:
     assert "trend:oversold-reversal" in quality.reasons
     assert any(reason.startswith("momentum:") for reason in quality.reasons)
 
-
 def test_signal_engine_relaxes_buy_tier_support_in_oversold_reversal_context() -> None:
     engine = SignalEngine()
-
     tier = engine._buy_signal_tier(
         entry_score=0.52,
         risk_score=0.41,
@@ -394,88 +392,20 @@ def test_signal_engine_relaxes_buy_tier_support_in_oversold_reversal_context() -
     assert tier is SignalTier.SPECULATIVE_BUY
 
 
-def test_signal_engine_allows_buy_on_benchmark_only_oversold_reversal_context() -> None:
-    benchmark = IndicatorSnapshot(
-        symbol="QQQ",
-        timestamp=datetime(2026, 4, 20, 15, 22, tzinfo=timezone.utc),
-        close=506.2,
-        sma_fast=507.4,
-        sma_slow=508.0,
-        ema_fast=506.8,
-        ema_slow=507.9,
-        vwap=507.0,
-        rsi=10.72,
-        atr=4.2,
-        plus_di=14.0,
-        minus_di=24.0,
-        adx=27.0,
-        macd=-1.52,
-        macd_signal=-1.08,
-        macd_histogram=-0.44,
-        stochastic_k=7.89,
-        stochastic_d=9.6,
-        relative_volume=1.32,
-        volume_profile=0.24,
-    )
-    snapshot = IndicatorSnapshot(
-        symbol="TSLA",
-        timestamp=datetime(2026, 4, 20, 15, 22, tzinfo=timezone.utc),
-        close=282.4,
-        sma_fast=286.1,
-        sma_slow=284.0,
-        ema_fast=285.5,
-        ema_slow=284.8,
-        vwap=284.9,
-        rsi=41.0,
-        atr=3.1,
-        plus_di=19.0,
-        minus_di=21.0,
-        adx=24.0,
-        macd=-0.22,
-        macd_signal=-0.19,
-        macd_histogram=-0.03,
-        stochastic_k=38.0,
-        stochastic_d=35.0,
-        relative_volume=1.18,
-        volume_profile=0.19,
+def test_signal_engine_uses_speculative_buy_as_tier_floor() -> None:
+    engine = SignalEngine()
+
+    tier = engine._buy_signal_tier(
+        entry_score=0.49,
+        risk_score=0.92,
+        quality_score=0.18,
+        supportive_signals=1,
+        session_risk=0.45,
+        strong_exit_pressure=False,
+        bullish_reversal_context=False,
     )
 
-    decision = SignalEngine().evaluate(snapshot, TradeState.FLAT, benchmark=benchmark)
-
-    assert decision.action is SignalAction.BUY_ALERT
-    assert "oversold-reversal-context" in decision.reasons
-    assert any(reason.startswith("QQQ ") for reason in decision.reasons)
-
-
-def test_signal_engine_scores_oversold_reversal_quality_context() -> None:
-    snapshot = IndicatorSnapshot(
-        symbol="TSLA",
-        timestamp=datetime(2026, 4, 20, 15, 22, tzinfo=timezone.utc),
-        close=282.4,
-        sma_fast=283.1,
-        sma_slow=284.0,
-        ema_fast=282.9,
-        ema_slow=283.6,
-        vwap=283.3,
-        rsi=11.4,
-        atr=3.1,
-        plus_di=19.0,
-        minus_di=21.0,
-        adx=24.0,
-        macd=-0.82,
-        macd_signal=-0.51,
-        macd_histogram=-0.31,
-        stochastic_k=8.4,
-        stochastic_d=10.1,
-        relative_volume=1.24,
-        volume_profile=0.21,
-    )
-
-    quality = SignalEngine()._long_entry_quality_assessment(snapshot, None, True)
-
-    assert quality.score > 0.0
-    assert "trend:oversold-reversal" in quality.reasons
-    assert any(reason.startswith("momentum:") for reason in quality.reasons)
+    assert tier is SignalTier.SPECULATIVE_BUY
 
 
 def test_signal_engine_uses_configured_entry_exit_margin() -> None:
@@ -612,7 +542,7 @@ def test_signal_engine_opening_session_penalty_boundaries(session_risk: float, e
         (BUY_TIER_OPPORTUNISTIC_ENTRY, 0.6, BUY_TIER_OPPORTUNISTIC_QUALITY, 2, SignalTier.OPPORTUNISTIC_BUY),
         (BUY_TIER_OPPORTUNISTIC_ENTRY, 0.6, BUY_TIER_OPPORTUNISTIC_QUALITY - 0.01, 2, SignalTier.SPECULATIVE_BUY),
         (BUY_TIER_SPECULATIVE_ENTRY, 0.7, BUY_TIER_SPECULATIVE_QUALITY, 2, SignalTier.SPECULATIVE_BUY),
-        (BUY_TIER_SPECULATIVE_ENTRY - 0.01, 0.8, BUY_TIER_SPECULATIVE_QUALITY, 2, None),
+        (BUY_TIER_SPECULATIVE_ENTRY - 0.01, 0.8, BUY_TIER_SPECULATIVE_QUALITY, 2, SignalTier.SPECULATIVE_BUY),
     ],
 )
 def test_signal_engine_buy_tier_threshold_constants(

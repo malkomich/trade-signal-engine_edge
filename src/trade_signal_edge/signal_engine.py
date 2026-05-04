@@ -71,6 +71,8 @@ BUY_TIER_CONVICTION_MIN_SUPPORTING_SIGNALS = 4
 BUY_TIER_BALANCED_MIN_SUPPORTING_SIGNALS = 3
 BUY_TIER_OPPORTUNISTIC_MIN_SUPPORTING_SIGNALS = 2
 BUY_TIER_SPECULATIVE_MIN_SUPPORTING_SIGNALS = 2
+BUY_TIER_REVERSAL_SUPPORT_DISCOUNT = 1
+BUY_TIER_MIN_SUPPORT_FLOOR = 1
 BUY_RSI_BEARISH_THRESHOLD = 55.0
 BUY_RSI_STRONG_ZONE_MAX = 35.0
 BUY_STOCHASTIC_OVERBOUGHT_THRESHOLD = 78.0
@@ -287,8 +289,6 @@ class SignalEngine:
                 strong_exit_pressure=strong_exit_pressure,
                 bullish_reversal_context=bullish_reversal_context,
             )
-            if buy_tier is None:
-                return SignalAction.HOLD, (), None
             reasons = ["entry-qualified", f"buy-tier:{buy_tier.value}"]
             reasons.extend(quality_assessment.reasons)
             return SignalAction.BUY_ALERT, tuple(dict.fromkeys(reasons)), buy_tier
@@ -1020,16 +1020,16 @@ class SignalEngine:
         session_risk: float,
         strong_exit_pressure: bool,
         bullish_reversal_context: bool = False,
-    ) -> SignalTier | None:
+    ) -> SignalTier:
         pressure_penalty = BUY_TIER_STRONG_EXIT_PENALTY if strong_exit_pressure else 0.0
         high_risk_penalty = BUY_TIER_HIGH_RISK_PENALTY if risk_score >= 0.75 else 0.0
         opening_penalty = self._opening_session_penalty(session_risk)
         tier_quality_penalty = pressure_penalty + opening_penalty
-        reversal_support_discount = 1 if bullish_reversal_context else 0
-        conviction_min_support = max(1, BUY_TIER_CONVICTION_MIN_SUPPORTING_SIGNALS - reversal_support_discount)
-        balanced_min_support = max(1, BUY_TIER_BALANCED_MIN_SUPPORTING_SIGNALS - reversal_support_discount)
-        opportunistic_min_support = max(1, BUY_TIER_OPPORTUNISTIC_MIN_SUPPORTING_SIGNALS - reversal_support_discount)
-        speculative_min_support = max(1, BUY_TIER_SPECULATIVE_MIN_SUPPORTING_SIGNALS - reversal_support_discount)
+        reversal_support_discount = BUY_TIER_REVERSAL_SUPPORT_DISCOUNT if bullish_reversal_context else 0
+        conviction_min_support = max(BUY_TIER_MIN_SUPPORT_FLOOR, BUY_TIER_CONVICTION_MIN_SUPPORTING_SIGNALS - reversal_support_discount)
+        balanced_min_support = max(BUY_TIER_MIN_SUPPORT_FLOOR, BUY_TIER_BALANCED_MIN_SUPPORTING_SIGNALS - reversal_support_discount)
+        opportunistic_min_support = max(BUY_TIER_MIN_SUPPORT_FLOOR, BUY_TIER_OPPORTUNISTIC_MIN_SUPPORTING_SIGNALS - reversal_support_discount)
+        speculative_min_support = max(BUY_TIER_MIN_SUPPORT_FLOOR, BUY_TIER_SPECULATIVE_MIN_SUPPORTING_SIGNALS - reversal_support_discount)
         if (
             entry_score >= BUY_TIER_CONVICTION_ENTRY + opening_penalty
             and risk_score <= BUY_TIER_CONVICTION_MAX_RISK
@@ -1058,4 +1058,6 @@ class SignalEngine:
             and supportive_signals >= speculative_min_support
         ):
             return SignalTier.SPECULATIVE_BUY
-        return None
+        # Eligibility is decided earlier in decide_action by the gate, momentum,
+        # trend, quality, and margin checks. Tiering only classifies the buy.
+        return SignalTier.SPECULATIVE_BUY
