@@ -43,9 +43,18 @@ BUY_QUALITY_FLOW_WEIGHT = 0.25
 BUY_QUALITY_MOMENTUM_WEIGHT = 0.2
 BUY_QUALITY_VOLATILITY_WEIGHT = 0.1
 BUY_QUALITY_STRENGTH_WEIGHT = 0.05
+BUY_RSI_OVERSOLD_THRESHOLD = 30.0
+BUY_STOCHASTIC_OVERSOLD_THRESHOLD = 20.0
+BUY_OVERSOLD_REVERSAL_ENTRY_BONUS = 0.35
+BUY_OVERSOLD_REVERSAL_EXIT_PENALTY = 0.18
+BUY_OVERSOLD_REVERSAL_MACD_ENTRY_BONUS = 0.5
+BUY_OVERSOLD_REVERSAL_MACD_EXIT_PENALTY = 0.15
+BUY_OVERSOLD_REVERSAL_ENTRY_BOOST = 1.2
+BUY_OVERSOLD_REVERSAL_EXIT_BOOST = 0.18
+BUY_OVERSOLD_REVERSAL_EXIT_SCORE_REDUCTION = 0.35
 BUY_TIER_STRONG_EXIT_PENALTY = 0.08
 BUY_TIER_HIGH_RISK_PENALTY = 0.05
-BUY_TIER_CONVICTION_ENTRY = 0.74
+BUY_TIER_CONVICTION_ENTRY = 0.73
 BUY_TIER_CONVICTION_QUALITY = 0.68
 BUY_TIER_CONVICTION_MAX_RISK = 0.52
 BUY_TIER_BALANCED_ENTRY = 0.66
@@ -107,9 +116,10 @@ class SignalEngine:
             entry_raw += buy_weight * entry_value
             exit_raw += sell_weight * exit_value
 
-        sma_bias = self._trend_bias(snapshot.sma_fast, snapshot.sma_slow)
-        ema_bias = self._trend_bias(snapshot.ema_fast, snapshot.ema_slow)
-        vwap_bias = self._binary_bias(snapshot.close, snapshot.vwap)
+        bullish_reversal_context = self._bullish_reversal_context(snapshot, benchmark)
+        sma_bias = self._trend_bias(snapshot.sma_fast, snapshot.sma_slow, bullish_reversal_context)
+        ema_bias = self._trend_bias(snapshot.ema_fast, snapshot.ema_slow, bullish_reversal_context)
+        vwap_bias = self._binary_bias(snapshot.close, snapshot.vwap, bullish_reversal_context)
         bollinger_entry, bollinger_exit = self._bollinger_bias(
             snapshot.close,
             snapshot.bollinger_middle,
@@ -119,7 +129,12 @@ class SignalEngine:
         rsi_entry, rsi_exit = self._rsi_bias(snapshot.rsi)
         atr_entry, atr_exit = self._atr_bias(snapshot.atr, snapshot.close)
         dm_entry, dm_exit = self._dm_bias(snapshot.plus_di, snapshot.minus_di, snapshot.adx)
-        macd_entry, macd_exit = self._macd_bias(snapshot.macd, snapshot.macd_signal, snapshot.macd_histogram)
+        macd_entry, macd_exit = self._macd_bias(
+            snapshot.macd,
+            snapshot.macd_signal,
+            snapshot.macd_histogram,
+            bullish_reversal_context,
+        )
         stochastic_entry, stochastic_exit = self._stochastic_bias(snapshot.stochastic_k, snapshot.stochastic_d)
         obv_entry, obv_exit = self._obv_bias(snapshot.obv, snapshot.obv_delta, snapshot.relative_volume, snapshot.volume_profile)
         relative_volume_entry, relative_volume_exit = self._relative_volume_bias(snapshot.relative_volume)
@@ -130,7 +145,7 @@ class SignalEngine:
         session_risk = self._session_risk(snapshot.timestamp)
         strong_exit_pressure = self.is_strong_exit_pressure(snapshot)
         sell_pressure = self._sell_pressure_bias(snapshot)
-        quality_assessment = self._long_entry_quality_assessment(snapshot, benchmark)
+        quality_assessment = self._long_entry_quality_assessment(snapshot, benchmark, bullish_reversal_context)
 
         add("sma", sma_bias, -sma_bias)
         add("ema", ema_bias, -ema_bias)
@@ -148,6 +163,9 @@ class SignalEngine:
         exit_raw += benchmark_exit
         entry_raw += profile_entry
         exit_raw += profile_exit
+        if bullish_reversal_context:
+            entry_raw += BUY_OVERSOLD_REVERSAL_ENTRY_BOOST
+            exit_raw -= BUY_OVERSOLD_REVERSAL_EXIT_BOOST
 
         buy_max_weight = sum(float(weight) for weight in self.config.buy_weights.values())
         sell_max_weight = sum(float(weight) for weight in self.config.sell_weights.values())
@@ -165,6 +183,8 @@ class SignalEngine:
             + (sell_pressure * 0.5)
             + (0.08 if strong_exit_pressure else 0.0)
         )
+        if bullish_reversal_context:
+            exit_score = _clamp(exit_score - BUY_OVERSOLD_REVERSAL_EXIT_SCORE_REDUCTION)
         action, action_reasons, signal_tier = self.decide_action(
             entry_score,
             exit_score,
@@ -175,8 +195,11 @@ class SignalEngine:
             session_risk,
             strong_exit_pressure,
             quality_assessment,
+            bullish_reversal_context,
         )
         reasons.extend(action_reasons)
+        if bullish_reversal_context:
+            reasons.append("oversold-reversal-context")
 
         if benchmark_reason is not None:
             reasons.append(benchmark_reason)
@@ -204,11 +227,14 @@ class SignalEngine:
         session_risk: float | None = None,
         strong_exit_pressure: bool | None = None,
         quality_assessment: QualitySlice | None = None,
+        bullish_reversal_context: bool | None = None,
     ) -> tuple[SignalAction, tuple[str, ...], SignalTier | None]:
         if strong_exit_pressure is None:
             strong_exit_pressure = self.is_strong_exit_pressure(snapshot)
         if session_risk is None and snapshot is not None:
             session_risk = self._session_risk(snapshot.timestamp)
+        if bullish_reversal_context is None and snapshot is not None:
+            bullish_reversal_context = self._bullish_reversal_context(snapshot, benchmark)
 
         if state is TradeState.ACCEPTED_OPEN and exit_score >= self.config.exit_threshold:
             reasons: list[str] = []
@@ -219,19 +245,25 @@ class SignalEngine:
 
         entry_gate = min(self.config.entry_threshold, self.config.entry_gate_cap)
         if session_risk is not None:
-            entry_gate += self._opening_session_penalty(session_risk)
+            opening_penalty = self._opening_session_penalty(session_risk)
+            entry_gate += opening_penalty
+            if bullish_reversal_context:
+                entry_gate -= opening_penalty * 0.5
         entry_gate = max(BUY_ENTRY_FLOOR, entry_gate)
         if state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= entry_gate:
             if snapshot is None:
                 return SignalAction.HOLD, (), None
-            if not self._buy_momentum_gate(snapshot):
+            if not self._buy_momentum_gate(snapshot, benchmark, bullish_reversal_context):
                 return SignalAction.HOLD, (), None
-            if not self._buy_trend_gate(snapshot):
+            if not self._buy_trend_gate(snapshot, benchmark, bullish_reversal_context):
                 return SignalAction.HOLD, (), None
             if quality_assessment is None:
-                quality_assessment = self._long_entry_quality_assessment(snapshot, benchmark)
+                quality_assessment = self._long_entry_quality_assessment(snapshot, benchmark, bullish_reversal_context)
             quality_score = quality_assessment.score
-            if quality_score <= 0 or quality_assessment.supportive_signals < BUY_QUALITY_MIN_SUPPORTING_SIGNALS:
+            min_supporting_signals = BUY_QUALITY_MIN_SUPPORTING_SIGNALS
+            if bullish_reversal_context:
+                min_supporting_signals = 1
+            if quality_score <= 0 or quality_assessment.supportive_signals < min_supporting_signals:
                 return SignalAction.HOLD, (), None
             effective_margin = max(ENTRY_MARGIN_BASE, self.config.entry_exit_margin * 0.6)
             if strong_exit_pressure:
@@ -290,7 +322,34 @@ class SignalEngine:
             return True
         return False
 
-    def _buy_momentum_gate(self, snapshot: IndicatorSnapshot) -> bool:
+    def _bullish_reversal_context(
+        self,
+        snapshot: IndicatorSnapshot | None,
+        benchmark: IndicatorSnapshot | None = None,
+    ) -> bool:
+        for candidate in (snapshot, benchmark):
+            if candidate is None:
+                continue
+            if candidate.rsi is None or candidate.stochastic_k is None or candidate.stochastic_d is None:
+                continue
+            if not isfinite(candidate.rsi) or not isfinite(candidate.stochastic_k) or not isfinite(candidate.stochastic_d):
+                continue
+            if (
+                candidate.rsi <= BUY_RSI_OVERSOLD_THRESHOLD
+                and candidate.stochastic_k <= BUY_STOCHASTIC_OVERSOLD_THRESHOLD
+                and candidate.stochastic_k <= candidate.stochastic_d
+            ):
+                return True
+        return False
+
+    def _buy_momentum_gate(
+        self,
+        snapshot: IndicatorSnapshot,
+        benchmark: IndicatorSnapshot | None = None,
+        bullish_reversal_context: bool | None = None,
+    ) -> bool:
+        if bullish_reversal_context is None:
+            bullish_reversal_context = self._bullish_reversal_context(snapshot, benchmark)
         if snapshot.rsi is not None and isfinite(snapshot.rsi):
             if snapshot.rsi >= BUY_RSI_BEARISH_THRESHOLD:
                 return False
@@ -302,11 +361,19 @@ class SignalEngine:
             and snapshot.macd_signal is not None
             and snapshot.macd_histogram is not None
             and snapshot.macd_histogram <= BUY_MACD_BEARISH_CROSS_GUARD
+            and not bullish_reversal_context
         ):
             return False
         return True
 
-    def _buy_trend_gate(self, snapshot: IndicatorSnapshot) -> bool:
+    def _buy_trend_gate(
+        self,
+        snapshot: IndicatorSnapshot,
+        benchmark: IndicatorSnapshot | None = None,
+        bullish_reversal_context: bool | None = None,
+    ) -> bool:
+        if bullish_reversal_context is None:
+            bullish_reversal_context = self._bullish_reversal_context(snapshot, benchmark)
         trend_votes = 0
         aligned_votes = 0
         if snapshot.vwap is not None and isfinite(snapshot.vwap):
@@ -323,9 +390,9 @@ class SignalEngine:
                 aligned_votes += 1
 
         if trend_votes == 0:
-            return False
+            return bullish_reversal_context
         if aligned_votes == 0:
-            return False
+            return bullish_reversal_context
         return True
 
     def _sell_pressure_bias(self, snapshot: IndicatorSnapshot) -> float:
@@ -367,20 +434,26 @@ class SignalEngine:
             return OPENING_SESSION_PENALTY_LOW
         return 0.0
 
-    def _trend_bias(self, fast: float | None, slow: float | None) -> float:
+    def _trend_bias(self, fast: float | None, slow: float | None, bullish_reversal_context: bool = False) -> float:
         if fast is None or slow is None or not isfinite(fast) or not isfinite(slow):
             return 0.0
         gap = fast - slow
         if gap > 0:
             return 1.0
         if gap < 0:
+            if bullish_reversal_context:
+                return 0.5
             return -1.0
         return 0.0
 
-    def _binary_bias(self, close: float, reference: float | None) -> float:
+    def _binary_bias(self, close: float, reference: float | None, bullish_reversal_context: bool = False) -> float:
         if reference is None or not isfinite(reference):
             return 0.0
-        return 1.0 if close >= reference else -1.0
+        if close >= reference:
+            return 1.0
+        if bullish_reversal_context:
+            return 0.45
+        return -1.0
 
     def _rsi_bias(self, rsi: float | None) -> tuple[float, float]:
         if rsi is None or not isfinite(rsi):
@@ -391,15 +464,15 @@ class SignalEngine:
             return -0.9, 0.9
         if rsi >= 45:
             return -0.1, 0.2
-        if rsi >= BUY_RSI_STRONG_ZONE_MAX:
+        if rsi >= 35:
             return 0.6, -0.1
+        if rsi >= BUY_RSI_OVERSOLD_THRESHOLD:
+            return 0.9, -0.3
         if rsi >= 25:
             return 1.0, -0.4
         if rsi >= 20:
-            return 0.8, -0.2
-        if rsi >= 15:
-            return 0.5, 0.0
-        return 0.2, 0.2
+            return 1.0, -0.5
+        return 1.0, -0.6
 
     def _atr_bias(self, atr: float | None, close: float) -> tuple[float, float]:
         if atr is None or close <= 0 or not isfinite(atr):
@@ -425,6 +498,7 @@ class SignalEngine:
         macd: float | None,
         macd_signal: float | None,
         macd_histogram: float | None,
+        bullish_reversal_context: bool = False,
     ) -> tuple[float, float]:
         if macd is None or macd_signal is None or macd_histogram is None:
             return 0.0, 0.0
@@ -432,6 +506,8 @@ class SignalEngine:
             return 1.0, -0.5
         if macd > macd_signal and macd_histogram <= 0:
             return 0.5, 0.1
+        if bullish_reversal_context and macd <= macd_signal and macd_histogram <= 0:
+            return BUY_OVERSOLD_REVERSAL_MACD_ENTRY_BONUS, -BUY_OVERSOLD_REVERSAL_MACD_EXIT_PENALTY
         if macd < macd_signal and macd_histogram < 0:
             return -1.0, 1.0
         if macd < macd_signal and macd_histogram >= 0:
@@ -525,6 +601,10 @@ class SignalEngine:
         exit_bias = -0.25 * benchmark_trend - 0.35 * relative_strength
 
         benchmark_label = benchmark.symbol.strip().upper() if benchmark.symbol.strip() else "BENCHMARK"
+        if self._bullish_reversal_context(benchmark):
+            entry_bias += BUY_OVERSOLD_REVERSAL_ENTRY_BONUS
+            exit_bias -= BUY_OVERSOLD_REVERSAL_EXIT_PENALTY
+            return entry_bias, exit_bias, f"{benchmark_label} oversold reversal context"
         if benchmark_trend > 0 and relative_strength > 0:
             return entry_bias, exit_bias, f"{benchmark_label} market context aligned"
         if benchmark_trend < 0 and relative_strength < 0:
@@ -710,10 +790,13 @@ class SignalEngine:
         self,
         snapshot: IndicatorSnapshot,
         benchmark: IndicatorSnapshot | None,
+        bullish_reversal_context: bool | None = None,
     ) -> QualitySlice:
-        trend = self._trend_quality_slice(snapshot)
+        if bullish_reversal_context is None:
+            bullish_reversal_context = self._bullish_reversal_context(snapshot, benchmark)
+        trend = self._trend_quality_slice(snapshot, bullish_reversal_context)
         flow = self._flow_quality_slice(snapshot)
-        momentum = self._momentum_quality_slice(snapshot)
+        momentum = self._momentum_quality_slice(snapshot, bullish_reversal_context)
         volatility = self._volatility_quality_slice(snapshot)
         strength = self._strength_quality_slice(snapshot)
 
@@ -734,7 +817,7 @@ class SignalEngine:
             weighted_score /= weighted_denominator
 
         if benchmark is not None and benchmark.ema_fast is not None and benchmark.ema_slow is not None:
-            if benchmark.ema_fast >= benchmark.ema_slow:
+            if benchmark.ema_fast >= benchmark.ema_slow or bullish_reversal_context:
                 weighted_score = min(1.0, weighted_score + 0.05)
 
         weighted_score = _clamp(weighted_score)
@@ -756,7 +839,7 @@ class SignalEngine:
             reasons=reasons,
         )
 
-    def _trend_quality_slice(self, snapshot: IndicatorSnapshot) -> QualitySlice:
+    def _trend_quality_slice(self, snapshot: IndicatorSnapshot, bullish_reversal_context: bool = False) -> QualitySlice:
         components: list[tuple[str, float, bool]] = []
         if snapshot.vwap is not None:
             score = 1.0 if snapshot.close >= snapshot.vwap else 0.25
@@ -767,6 +850,8 @@ class SignalEngine:
         if snapshot.sma_fast is not None and snapshot.sma_slow is not None:
             score = 1.0 if snapshot.sma_fast >= snapshot.sma_slow else 0.2
             components.append(("trend:sma-aligned", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
+        if bullish_reversal_context and not any(score >= BUY_QUALITY_SUPPORT_THRESHOLD for _, score, _ in components):
+            components.append(("trend:oversold-reversal", 0.8, True))
         if not components:
             return QualitySlice(score=0.0, supportive_signals=0, component_count=0, reasons=())
         score = sum(component_score for _, component_score, _ in components) / len(components)
@@ -811,10 +896,12 @@ class SignalEngine:
         supportive = sum(1 for _, _, is_supportive in components if is_supportive)
         return QualitySlice(score=score, supportive_signals=supportive, component_count=len(components), reasons=reasons)
 
-    def _momentum_quality_slice(self, snapshot: IndicatorSnapshot) -> QualitySlice:
+    def _momentum_quality_slice(self, snapshot: IndicatorSnapshot, bullish_reversal_context: bool = False) -> QualitySlice:
         components: list[tuple[str, float, bool]] = []
         if snapshot.rsi is not None:
-            if snapshot.rsi <= BUY_RSI_STRONG_ZONE_MAX:
+            if snapshot.rsi <= BUY_RSI_OVERSOLD_THRESHOLD:
+                score = 1.0
+            elif snapshot.rsi <= BUY_RSI_STRONG_ZONE_MAX:
                 score = 1.0
             elif snapshot.rsi <= 45:
                 score = 0.75
@@ -830,17 +917,21 @@ class SignalEngine:
                 score = 0.75
             elif snapshot.macd > snapshot.macd_signal:
                 score = 0.45
+            elif bullish_reversal_context and snapshot.macd <= snapshot.macd_signal and snapshot.macd_histogram <= 0:
+                score = 0.7
             elif snapshot.macd < snapshot.macd_signal and snapshot.macd_histogram < 0:
                 score = 0.0
             else:
                 score = 0.25
             components.append(("momentum:macd-positive", score, score >= BUY_QUALITY_SUPPORT_THRESHOLD))
         if snapshot.stochastic_k is not None and snapshot.stochastic_d is not None:
-            if snapshot.stochastic_k > snapshot.stochastic_d and snapshot.stochastic_k < BUY_STOCHASTIC_OVERBOUGHT_THRESHOLD:
+            if snapshot.stochastic_k <= BUY_STOCHASTIC_OVERSOLD_THRESHOLD and snapshot.stochastic_k <= snapshot.stochastic_d:
+                score = 1.0
+            elif snapshot.stochastic_k > snapshot.stochastic_d and snapshot.stochastic_k < BUY_STOCHASTIC_OVERBOUGHT_THRESHOLD:
                 score = 1.0
             elif snapshot.stochastic_k > snapshot.stochastic_d:
                 score = 0.4
-            elif snapshot.stochastic_k < 30 and snapshot.stochastic_k <= snapshot.stochastic_d:
+            elif snapshot.stochastic_k < BUY_RSI_OVERSOLD_THRESHOLD and snapshot.stochastic_k <= snapshot.stochastic_d:
                 score = 0.45
             else:
                 score = 0.0
