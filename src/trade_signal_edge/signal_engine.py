@@ -390,8 +390,10 @@ class SignalEngine:
                 aligned_votes += 1
 
         if trend_votes == 0:
+            # Reversal entries can proceed on momentum + flow alone when trend data is absent.
             return bullish_reversal_context
         if aligned_votes == 0:
+            # Oversold reversals are allowed to override weak trend alignment.
             return bullish_reversal_context
         return True
 
