@@ -144,7 +144,7 @@ class SignalEngine:
         profile_entry, profile_exit, profile_reason = self._optimization_bias(snapshot)
         risk_score = self._risk_score(snapshot)
         session_risk = self._session_risk(snapshot.timestamp)
-        strong_exit_pressure = self.is_strong_exit_pressure(snapshot)
+        strong_exit_pressure = self.is_strong_exit_pressure(snapshot, bullish_reversal_context)
         sell_pressure = self._sell_pressure_bias(snapshot)
         quality_assessment = self._long_entry_quality_assessment(snapshot, benchmark, bullish_reversal_context)
 
@@ -231,7 +231,7 @@ class SignalEngine:
         bullish_reversal_context: bool | None = None,
     ) -> tuple[SignalAction, tuple[str, ...], SignalTier | None]:
         if strong_exit_pressure is None:
-            strong_exit_pressure = self.is_strong_exit_pressure(snapshot)
+            strong_exit_pressure = self.is_strong_exit_pressure(snapshot, bullish_reversal_context)
         if session_risk is None and snapshot is not None:
             session_risk = self._session_risk(snapshot.timestamp)
         if bullish_reversal_context is None:
@@ -285,6 +285,7 @@ class SignalEngine:
                 supportive_signals=quality_assessment.supportive_signals,
                 session_risk=session_risk,
                 strong_exit_pressure=strong_exit_pressure,
+                bullish_reversal_context=bullish_reversal_context,
             )
             if buy_tier is None:
                 return SignalAction.HOLD, (), None
@@ -294,7 +295,11 @@ class SignalEngine:
 
         return SignalAction.HOLD, (), None
 
-    def is_strong_exit_pressure(self, snapshot: IndicatorSnapshot | None) -> bool:
+    def is_strong_exit_pressure(
+        self,
+        snapshot: IndicatorSnapshot | None,
+        bullish_reversal_context: bool = False,
+    ) -> bool:
         if snapshot is None:
             return False
         if snapshot.rsi is not None and snapshot.rsi >= 70:
@@ -304,6 +309,8 @@ class SignalEngine:
                 return True
             if snapshot.stochastic_k >= 75 and snapshot.stochastic_k > snapshot.stochastic_d:
                 return True
+        if bullish_reversal_context:
+            return False
         if snapshot.vwap is not None and snapshot.macd_histogram is not None:
             if snapshot.close < snapshot.vwap and snapshot.macd_histogram < 0:
                 return True
@@ -341,6 +348,13 @@ class SignalEngine:
             if candidate.rsi <= BUY_RSI_OVERSOLD_THRESHOLD and candidate.stochastic_k <= BUY_STOCHASTIC_OVERSOLD_THRESHOLD:
                 return True
         return False
+
+    def is_bullish_reversal_context(
+        self,
+        snapshot: IndicatorSnapshot | None,
+        benchmark: IndicatorSnapshot | None = None,
+    ) -> bool:
+        return self._bullish_reversal_context(snapshot, benchmark)
 
     def _buy_momentum_gate(
         self,
@@ -1005,37 +1019,43 @@ class SignalEngine:
         supportive_signals: int,
         session_risk: float,
         strong_exit_pressure: bool,
+        bullish_reversal_context: bool = False,
     ) -> SignalTier | None:
         pressure_penalty = BUY_TIER_STRONG_EXIT_PENALTY if strong_exit_pressure else 0.0
         high_risk_penalty = BUY_TIER_HIGH_RISK_PENALTY if risk_score >= 0.75 else 0.0
         opening_penalty = self._opening_session_penalty(session_risk)
         tier_quality_penalty = pressure_penalty + opening_penalty
+        reversal_support_discount = 1 if bullish_reversal_context else 0
+        conviction_min_support = max(1, BUY_TIER_CONVICTION_MIN_SUPPORTING_SIGNALS - reversal_support_discount)
+        balanced_min_support = max(1, BUY_TIER_BALANCED_MIN_SUPPORTING_SIGNALS - reversal_support_discount)
+        opportunistic_min_support = max(1, BUY_TIER_OPPORTUNISTIC_MIN_SUPPORTING_SIGNALS - reversal_support_discount)
+        speculative_min_support = max(1, BUY_TIER_SPECULATIVE_MIN_SUPPORTING_SIGNALS - reversal_support_discount)
         if (
             entry_score >= BUY_TIER_CONVICTION_ENTRY + opening_penalty
             and risk_score <= BUY_TIER_CONVICTION_MAX_RISK
             and quality_score >= BUY_TIER_CONVICTION_QUALITY + tier_quality_penalty
-            and supportive_signals >= BUY_TIER_CONVICTION_MIN_SUPPORTING_SIGNALS
+            and supportive_signals >= conviction_min_support
         ):
             return SignalTier.CONVICTION_BUY
         if (
             entry_score >= BUY_TIER_BALANCED_ENTRY + opening_penalty
             and risk_score <= BUY_TIER_BALANCED_MAX_RISK
             and quality_score >= BUY_TIER_BALANCED_QUALITY + tier_quality_penalty
-            and supportive_signals >= BUY_TIER_BALANCED_MIN_SUPPORTING_SIGNALS
+            and supportive_signals >= balanced_min_support
         ):
             return SignalTier.BALANCED_BUY
         if (
             entry_score >= BUY_TIER_OPPORTUNISTIC_ENTRY + opening_penalty
             and risk_score <= BUY_TIER_OPPORTUNISTIC_MAX_RISK
             and quality_score >= BUY_TIER_OPPORTUNISTIC_QUALITY + tier_quality_penalty + high_risk_penalty
-            and supportive_signals >= BUY_TIER_OPPORTUNISTIC_MIN_SUPPORTING_SIGNALS
+            and supportive_signals >= opportunistic_min_support
         ):
             return SignalTier.OPPORTUNISTIC_BUY
         if (
             entry_score >= BUY_TIER_SPECULATIVE_ENTRY + opening_penalty
             and risk_score <= BUY_TIER_SPECULATIVE_MAX_RISK
             and quality_score >= BUY_TIER_SPECULATIVE_QUALITY + tier_quality_penalty + high_risk_penalty
-            and supportive_signals >= BUY_TIER_SPECULATIVE_MIN_SUPPORTING_SIGNALS
+            and supportive_signals >= speculative_min_support
         ):
             return SignalTier.SPECULATIVE_BUY
         return None
