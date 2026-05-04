@@ -260,6 +260,106 @@ def test_combine_timeframe_decisions_handles_zero_weights_without_crashing() -> 
     assert decision.action is SignalAction.HOLD
 
 
+def test_combine_timeframe_decisions_prioritizes_fast_reversal_timeframes() -> None:
+    timestamp = datetime(2026, 5, 4, 19, 22, tzinfo=timezone.utc)
+    fast_snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=timestamp,
+        close=414.1,
+        sma_fast=414.3,
+        sma_slow=415.0,
+        ema_fast=414.2,
+        ema_slow=414.8,
+        vwap=414.7,
+        rsi=18.0,
+        atr=3.0,
+        plus_di=18.0,
+        minus_di=22.0,
+        adx=24.0,
+        macd=-0.4,
+        macd_signal=-0.2,
+        macd_histogram=-0.2,
+        stochastic_k=12.0,
+        stochastic_d=14.0,
+        relative_volume=1.2,
+        volume_profile=0.2,
+    )
+    slow_snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=timestamp,
+        close=414.1,
+        sma_fast=418.0,
+        sma_slow=421.0,
+        ema_fast=417.4,
+        ema_slow=420.5,
+        vwap=418.8,
+        rsi=58.0,
+        atr=3.0,
+        plus_di=17.0,
+        minus_di=24.0,
+        adx=27.0,
+        macd=-1.1,
+        macd_signal=-0.8,
+        macd_histogram=-0.3,
+        stochastic_k=61.0,
+        stochastic_d=58.0,
+        relative_volume=0.92,
+        volume_profile=0.14,
+    )
+    benchmark = IndicatorSnapshot(
+        symbol="QQQ",
+        timestamp=timestamp,
+        close=500.0,
+        sma_fast=501.0,
+        sma_slow=503.0,
+        ema_fast=500.5,
+        ema_slow=502.0,
+        vwap=501.0,
+        rsi=12.0,
+        atr=4.0,
+        plus_di=14.0,
+        minus_di=24.0,
+        adx=27.0,
+        macd=-1.0,
+        macd_signal=-0.7,
+        macd_histogram=-0.3,
+        stochastic_k=9.0,
+        stochastic_d=10.0,
+        relative_volume=1.25,
+        volume_profile=0.22,
+    )
+    engine = SignalEngine(SignalConfig(entry_threshold=0.62, exit_threshold=0.6))
+
+    decision = _combine_timeframe_decisions(
+        "NVDA",
+        {
+            "1m": fast_snapshot,
+            "5m": fast_snapshot,
+            "10m": fast_snapshot,
+            "15m": fast_snapshot,
+            "30m": slow_snapshot,
+            "60m": slow_snapshot,
+        },
+        {
+            "1m": make_decision("NVDA", timestamp, 0.92, 0.18, ("1m:reversal",)),
+            "5m": make_decision("NVDA", timestamp, 0.81, 0.26, ("5m:reversal",)),
+            "10m": make_decision("NVDA", timestamp, 0.56, 0.44, ("10m:mixed",)),
+            "15m": make_decision("NVDA", timestamp, 0.49, 0.48, ("15m:mixed",)),
+            "30m": make_decision("NVDA", timestamp, 0.24, 0.71, ("30m:bearish",)),
+            "60m": make_decision("NVDA", timestamp, 0.18, 0.79, ("60m:bearish",)),
+        },
+        {"1m": 1.0, "5m": 0.85, "10m": 0.75, "15m": 0.6, "30m": 0.45, "60m": 0.3},
+        {"1m": 1.0, "5m": 0.85, "10m": 0.75, "15m": 0.6, "30m": 0.45, "60m": 0.3},
+        engine,
+        TradeState.FLAT,
+        benchmark,
+    )
+
+    assert decision.action is SignalAction.BUY_ALERT
+    assert decision.entry_score > 0.6
+    assert decision.exit_score < decision.entry_score
+
+
 def test_runtime_from_session_config_filters_symbols_and_applies_margin() -> None:
     runtime = load_runtime_config()
     payload = {
