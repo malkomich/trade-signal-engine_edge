@@ -8,7 +8,7 @@ import os
 import time
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
-from typing import Any, get_args
+from typing import Any, Callable, get_args
 
 from .api_client import ApiSessionClient
 from .config import ALLOWED_OPERATIONAL_SYMBOLS, load_runtime_config
@@ -712,9 +712,24 @@ def _aggregate_entry_score(
     timeframe_weights: dict[str, float],
     bullish_reversal_context: bool,
 ) -> float:
-    execution = _weighted_timeframe_score(timeframe_decisions, timeframe_weights, ENTRY_EXECUTION_TIMEFRAMES, "entry")
-    confirmation = _weighted_timeframe_score(timeframe_decisions, timeframe_weights, ENTRY_CONFIRMATION_TIMEFRAMES, "entry")
-    context = _weighted_timeframe_score(timeframe_decisions, timeframe_weights, ENTRY_CONTEXT_TIMEFRAMES, "entry")
+    execution = _weighted_timeframe_score(
+        timeframe_decisions,
+        timeframe_weights,
+        ENTRY_EXECUTION_TIMEFRAMES,
+        lambda decision: decision.entry_score,
+    )
+    confirmation = _weighted_timeframe_score(
+        timeframe_decisions,
+        timeframe_weights,
+        ENTRY_CONFIRMATION_TIMEFRAMES,
+        lambda decision: decision.entry_score,
+    )
+    context = _weighted_timeframe_score(
+        timeframe_decisions,
+        timeframe_weights,
+        ENTRY_CONTEXT_TIMEFRAMES,
+        lambda decision: decision.entry_score,
+    )
     if bullish_reversal_context:
         execution_floor = (execution or 0.0) * REVERSAL_EXECUTION_FLOOR_RATIO
         confirmation_floor = max(confirmation, execution_floor) if confirmation is not None else execution_floor
@@ -743,14 +758,26 @@ def _aggregate_exit_score(
     timeframe_weights: dict[str, float],
     bullish_reversal_context: bool,
 ) -> float:
-    execution = _weighted_timeframe_score(timeframe_decisions, timeframe_weights, ENTRY_EXECUTION_TIMEFRAMES, "exit")
-    confirmation = _weighted_timeframe_score(timeframe_decisions, timeframe_weights, ENTRY_CONFIRMATION_TIMEFRAMES, "exit")
-    context = _weighted_timeframe_score(timeframe_decisions, timeframe_weights, ENTRY_CONTEXT_TIMEFRAMES, "exit")
+    execution = _weighted_timeframe_score(
+        timeframe_decisions,
+        timeframe_weights,
+        ENTRY_EXECUTION_TIMEFRAMES,
+        lambda decision: decision.exit_score,
+    )
+    confirmation = _weighted_timeframe_score(
+        timeframe_decisions,
+        timeframe_weights,
+        ENTRY_CONFIRMATION_TIMEFRAMES,
+        lambda decision: decision.exit_score,
+    )
+    context = _weighted_timeframe_score(
+        timeframe_decisions,
+        timeframe_weights,
+        ENTRY_CONTEXT_TIMEFRAMES,
+        lambda decision: decision.exit_score,
+    )
     if bullish_reversal_context:
-        execution_cap = execution if execution is not None else REVERSAL_EXIT_CONTEXT_CAP_FLOOR
-        confirmation_cap = confirmation if confirmation is not None else execution_cap
-        context_cap = context if context is not None else max(execution_cap, confirmation_cap, REVERSAL_EXIT_CONTEXT_CAP_FLOOR)
-        dampened_context = min(context_cap, max(execution_cap, confirmation_cap, REVERSAL_EXIT_CONTEXT_CAP_FLOOR))
+        dampened_context = _dampen_reversal_exit_context(execution, confirmation, context)
         return round(
             _blend_scores(
                 (execution, REVERSAL_EXIT_EXECUTION_WEIGHT),
@@ -773,7 +800,7 @@ def _weighted_timeframe_score(
     timeframe_decisions: dict[str, SignalDecision],
     timeframe_weights: dict[str, float],
     timeframes: tuple[str, ...],
-    score_field: str,
+    score_accessor: Callable[[SignalDecision], float],
 ) -> float | None:
     total = 0.0
     total_weight = 0.0
@@ -784,11 +811,26 @@ def _weighted_timeframe_score(
         weight = timeframe_weights.get(timeframe, 0.0)
         if weight <= 0:
             continue
-        total += weight * float(getattr(decision, f"{score_field}_score"))
+        total += weight * float(score_accessor(decision))
         total_weight += weight
     if total_weight <= 0:
         return None
     return total / total_weight
+
+
+def _dampen_reversal_exit_context(
+    execution: float | None,
+    confirmation: float | None,
+    context: float | None,
+) -> float:
+    base_cap = max(
+        execution if execution is not None else REVERSAL_EXIT_CONTEXT_CAP_FLOOR,
+        confirmation if confirmation is not None else REVERSAL_EXIT_CONTEXT_CAP_FLOOR,
+        REVERSAL_EXIT_CONTEXT_CAP_FLOOR,
+    )
+    if context is None:
+        return base_cap
+    return min(context, base_cap)
 
 
 def _blend_scores(*parts: tuple[float | None, float]) -> float:

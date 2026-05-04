@@ -289,8 +289,6 @@ class SignalEngine:
                 strong_exit_pressure=strong_exit_pressure,
                 bullish_reversal_context=bullish_reversal_context,
             )
-            if buy_tier is None:
-                return SignalAction.HOLD, (), None
             reasons = ["entry-qualified", f"buy-tier:{buy_tier.value}"]
             reasons.extend(quality_assessment.reasons)
             return SignalAction.BUY_ALERT, tuple(dict.fromkeys(reasons)), buy_tier
@@ -1022,7 +1020,7 @@ class SignalEngine:
         session_risk: float,
         strong_exit_pressure: bool,
         bullish_reversal_context: bool = False,
-    ) -> SignalTier | None:
+    ) -> SignalTier:
         pressure_penalty = BUY_TIER_STRONG_EXIT_PENALTY if strong_exit_pressure else 0.0
         high_risk_penalty = BUY_TIER_HIGH_RISK_PENALTY if risk_score >= 0.75 else 0.0
         opening_penalty = self._opening_session_penalty(session_risk)
@@ -1060,4 +1058,6 @@ class SignalEngine:
             and supportive_signals >= speculative_min_support
         ):
             return SignalTier.SPECULATIVE_BUY
+        # Eligibility is decided earlier in decide_action by the gate, momentum,
+        # trend, quality, and margin checks. Tiering only classifies the buy.
         return SignalTier.SPECULATIVE_BUY
