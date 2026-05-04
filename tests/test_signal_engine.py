@@ -263,6 +263,7 @@ def test_signal_engine_allows_buy_on_oversold_reversal_context() -> None:
     assert decision.signal_tier is not None
     assert decision.entry_score > decision.exit_score
     assert "oversold-reversal-context" in decision.reasons
+<<<<<<< HEAD
 
 
 def test_signal_engine_allows_buy_on_benchmark_only_oversold_reversal_context() -> None:
