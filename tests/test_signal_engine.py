@@ -265,6 +265,59 @@ def test_signal_engine_allows_buy_on_oversold_reversal_context() -> None:
     assert "oversold-reversal-context" in decision.reasons
 
 
+def test_signal_engine_allows_buy_on_benchmark_only_oversold_reversal_context() -> None:
+    benchmark = IndicatorSnapshot(
+        symbol="QQQ",
+        timestamp=datetime(2026, 4, 20, 15, 22, tzinfo=timezone.utc),
+        close=506.2,
+        sma_fast=507.4,
+        sma_slow=508.0,
+        ema_fast=506.8,
+        ema_slow=507.9,
+        vwap=507.0,
+        rsi=10.72,
+        atr=4.2,
+        plus_di=14.0,
+        minus_di=24.0,
+        adx=27.0,
+        macd=-1.52,
+        macd_signal=-1.08,
+        macd_histogram=-0.44,
+        stochastic_k=7.89,
+        stochastic_d=9.6,
+        relative_volume=1.32,
+        volume_profile=0.24,
+    )
+    snapshot = IndicatorSnapshot(
+        symbol="TSLA",
+        timestamp=datetime(2026, 4, 20, 15, 22, tzinfo=timezone.utc),
+        close=282.4,
+        sma_fast=286.1,
+        sma_slow=284.0,
+        ema_fast=285.5,
+        ema_slow=284.8,
+        vwap=284.9,
+        rsi=41.0,
+        atr=3.1,
+        plus_di=19.0,
+        minus_di=21.0,
+        adx=24.0,
+        macd=-0.22,
+        macd_signal=-0.19,
+        macd_histogram=-0.03,
+        stochastic_k=38.0,
+        stochastic_d=35.0,
+        relative_volume=1.18,
+        volume_profile=0.19,
+    )
+
+    decision = SignalEngine().evaluate(snapshot, TradeState.FLAT, benchmark=benchmark)
+
+    assert decision.action is SignalAction.BUY_ALERT
+    assert "oversold-reversal-context" in decision.reasons
+    assert any(reason.startswith("QQQ ") for reason in decision.reasons)
+
+
 def test_signal_engine_scores_oversold_reversal_quality_context() -> None:
     snapshot = IndicatorSnapshot(
         symbol="TSLA",

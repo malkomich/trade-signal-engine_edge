@@ -117,7 +117,7 @@ class SignalEngine:
             entry_raw += buy_weight * entry_value
             exit_raw += sell_weight * exit_value
 
-        bullish_reversal_context = self._bullish_reversal_context(snapshot)
+        bullish_reversal_context = self._bullish_reversal_context(snapshot, benchmark)
         sma_bias = self._trend_bias(snapshot.sma_fast, snapshot.sma_slow, bullish_reversal_context)
         ema_bias = self._trend_bias(snapshot.ema_fast, snapshot.ema_slow, bullish_reversal_context)
         vwap_bias = self._binary_bias(snapshot.close, snapshot.vwap, bullish_reversal_context)
@@ -235,7 +235,7 @@ class SignalEngine:
         if session_risk is None and snapshot is not None:
             session_risk = self._session_risk(snapshot.timestamp)
         if bullish_reversal_context is None:
-            bullish_reversal_context = self._bullish_reversal_context(snapshot) if snapshot is not None else self._bullish_reversal_context(benchmark)
+            bullish_reversal_context = self._bullish_reversal_context(snapshot, benchmark)
 
         if state is TradeState.ACCEPTED_OPEN and exit_score >= self.config.exit_threshold:
             reasons: list[str] = []
@@ -604,8 +604,8 @@ class SignalEngine:
 
         benchmark_label = benchmark.symbol.strip().upper() if benchmark.symbol.strip() else "BENCHMARK"
         if self._bullish_reversal_context(benchmark):
-            entry_bias += BUY_OVERSOLD_REVERSAL_ENTRY_BONUS
-            exit_bias -= BUY_OVERSOLD_REVERSAL_EXIT_PENALTY
+            # The combined reversal context already applies the global boost; keep this path informational
+            # to avoid double-counting benchmark oversold signals.
             return entry_bias, exit_bias, f"{benchmark_label} oversold reversal context"
         if benchmark_trend > 0 and relative_strength > 0:
             return entry_bias, exit_bias, f"{benchmark_label} market context aligned"
