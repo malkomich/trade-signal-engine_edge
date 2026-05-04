@@ -345,7 +345,15 @@ class SignalEngine:
                 continue
             if not isfinite(candidate.rsi) or not isfinite(candidate.stochastic_k) or not isfinite(candidate.stochastic_d):
                 continue
+<<<<<<< HEAD
             if candidate.rsi <= BUY_RSI_OVERSOLD_THRESHOLD and candidate.stochastic_k <= BUY_STOCHASTIC_OVERSOLD_THRESHOLD:
+=======
+            if (
+                candidate.rsi <= BUY_RSI_OVERSOLD_THRESHOLD
+                and candidate.stochastic_k <= BUY_STOCHASTIC_OVERSOLD_THRESHOLD
+                and candidate.stochastic_k <= candidate.stochastic_d
+            ):
+>>>>>>> 73d94a0 (fix(edge): restore oversold reversal signals)
                 return True
         return False
 
@@ -404,10 +412,15 @@ class SignalEngine:
                 aligned_votes += 1
 
         if trend_votes == 0:
+<<<<<<< HEAD
             # Reversal entries can proceed on momentum + flow alone when trend data is absent.
             return bullish_reversal_context
         if aligned_votes == 0:
             # Oversold reversals are allowed to override weak trend alignment.
+=======
+            return bullish_reversal_context
+        if aligned_votes == 0:
+>>>>>>> 73d94a0 (fix(edge): restore oversold reversal signals)
             return bullish_reversal_context
         return True
 
