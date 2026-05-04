@@ -268,6 +268,9 @@ class SignalEngine:
             effective_margin = max(ENTRY_MARGIN_BASE, self.config.entry_exit_margin * 0.6)
             if strong_exit_pressure:
                 effective_margin += ENTRY_MARGIN_STRONG_EXIT_BONUS
+            if bullish_reversal_context:
+                reversal_margin = max(ENTRY_MARGIN_BASE * 0.5, self.config.entry_exit_margin * 0.25)
+                effective_margin = min(effective_margin, reversal_margin)
             if exit_score >= entry_score - effective_margin:
                 return SignalAction.HOLD, (), None
             if risk_score is None:
