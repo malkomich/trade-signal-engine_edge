@@ -349,6 +349,13 @@ class SignalEngine:
                 return True
         return False
 
+    def is_bullish_reversal_context(
+        self,
+        snapshot: IndicatorSnapshot | None,
+        benchmark: IndicatorSnapshot | None = None,
+    ) -> bool:
+        return self._bullish_reversal_context(snapshot, benchmark)
+
     def _buy_momentum_gate(
         self,
         snapshot: IndicatorSnapshot,
