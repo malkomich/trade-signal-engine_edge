@@ -117,7 +117,7 @@ class SignalEngine:
             entry_raw += buy_weight * entry_value
             exit_raw += sell_weight * exit_value
 
-        bullish_reversal_context = self._bullish_reversal_context(snapshot, benchmark)
+        bullish_reversal_context = self._bullish_reversal_context(snapshot)
         sma_bias = self._trend_bias(snapshot.sma_fast, snapshot.sma_slow, bullish_reversal_context)
         ema_bias = self._trend_bias(snapshot.ema_fast, snapshot.ema_slow, bullish_reversal_context)
         vwap_bias = self._binary_bias(snapshot.close, snapshot.vwap, bullish_reversal_context)
@@ -345,15 +345,7 @@ class SignalEngine:
                 continue
             if not isfinite(candidate.rsi) or not isfinite(candidate.stochastic_k) or not isfinite(candidate.stochastic_d):
                 continue
-<<<<<<< HEAD
             if candidate.rsi <= BUY_RSI_OVERSOLD_THRESHOLD and candidate.stochastic_k <= BUY_STOCHASTIC_OVERSOLD_THRESHOLD:
-=======
-            if (
-                candidate.rsi <= BUY_RSI_OVERSOLD_THRESHOLD
-                and candidate.stochastic_k <= BUY_STOCHASTIC_OVERSOLD_THRESHOLD
-                and candidate.stochastic_k <= candidate.stochastic_d
-            ):
->>>>>>> 73d94a0 (fix(edge): restore oversold reversal signals)
                 return True
         return False
 
@@ -412,15 +404,10 @@ class SignalEngine:
                 aligned_votes += 1
 
         if trend_votes == 0:
-<<<<<<< HEAD
             # Reversal entries can proceed on momentum + flow alone when trend data is absent.
             return bullish_reversal_context
         if aligned_votes == 0:
             # Oversold reversals are allowed to override weak trend alignment.
-=======
-            return bullish_reversal_context
-        if aligned_votes == 0:
->>>>>>> 73d94a0 (fix(edge): restore oversold reversal signals)
             return bullish_reversal_context
         return True
 
