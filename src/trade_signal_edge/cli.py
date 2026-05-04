@@ -663,6 +663,7 @@ def _combine_timeframe_decisions(
     entry_score = entry_total / buy_weight_sum if buy_weight_sum > 0 else 0.0
     exit_score = exit_total / sell_weight_sum if sell_weight_sum > 0 else 0.0
 
+<<<<<<< HEAD
     bullish_reversal_context = signal_engine.is_bullish_reversal_context(primary_snapshot, benchmark) if primary_snapshot is not None else False
     strong_exit_pressure = any(
         signal_engine.is_strong_exit_pressure(snapshot, bullish_reversal_context)

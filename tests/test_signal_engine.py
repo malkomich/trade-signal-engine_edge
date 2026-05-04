@@ -379,7 +379,6 @@ def test_signal_engine_scores_oversold_reversal_quality_context() -> None:
 
 def test_signal_engine_relaxes_buy_tier_support_in_oversold_reversal_context() -> None:
     engine = SignalEngine()
-
     tier = engine._buy_signal_tier(
         entry_score=0.52,
         risk_score=0.41,
