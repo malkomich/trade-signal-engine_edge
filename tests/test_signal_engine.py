@@ -211,6 +211,35 @@ def test_signal_engine_rejects_buy_when_macd_is_bearish() -> None:
     assert decision.action is SignalAction.HOLD
 
 
+def test_signal_engine_ignores_bearish_exit_pressure_in_bullish_reversal_context() -> None:
+    engine = SignalEngine()
+    snapshot = IndicatorSnapshot(
+        symbol="TSLA",
+        timestamp=datetime(2026, 5, 4, 17, 36, tzinfo=timezone.utc),
+        close=414.1,
+        sma_fast=414.3,
+        sma_slow=415.0,
+        ema_fast=414.2,
+        ema_slow=414.8,
+        vwap=414.7,
+        rsi=12.0,
+        atr=3.5,
+        plus_di=18.0,
+        minus_di=22.0,
+        adx=24.0,
+        macd=-0.6,
+        macd_signal=-0.4,
+        macd_histogram=-0.2,
+        stochastic_k=9.0,
+        stochastic_d=10.0,
+        relative_volume=1.15,
+        volume_profile=0.18,
+    )
+
+    assert engine.is_strong_exit_pressure(snapshot) is True
+    assert engine.is_strong_exit_pressure(snapshot, True) is False
+
+
 def test_signal_engine_allows_buy_on_oversold_reversal_context() -> None:
     benchmark = IndicatorSnapshot(
         symbol="QQQ",
@@ -348,6 +377,22 @@ def test_signal_engine_scores_oversold_reversal_quality_context() -> None:
     assert quality.score > 0.0
     assert "trend:oversold-reversal" in quality.reasons
     assert any(reason.startswith("momentum:") for reason in quality.reasons)
+
+
+def test_signal_engine_relaxes_buy_tier_support_in_oversold_reversal_context() -> None:
+    engine = SignalEngine()
+
+    tier = engine._buy_signal_tier(
+        entry_score=0.52,
+        risk_score=0.41,
+        quality_score=0.42,
+        supportive_signals=1,
+        session_risk=0.45,
+        strong_exit_pressure=False,
+        bullish_reversal_context=True,
+    )
+
+    assert tier is SignalTier.SPECULATIVE_BUY
 
 
 def test_signal_engine_allows_buy_on_benchmark_only_oversold_reversal_context() -> None:
