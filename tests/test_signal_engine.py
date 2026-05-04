@@ -350,6 +350,37 @@ def test_signal_engine_scores_oversold_reversal_quality_context() -> None:
     assert any(reason.startswith("momentum:") for reason in quality.reasons)
 
 
+def test_signal_engine_scores_oversold_reversal_quality_context() -> None:
+    snapshot = IndicatorSnapshot(
+        symbol="TSLA",
+        timestamp=datetime(2026, 4, 20, 15, 22, tzinfo=timezone.utc),
+        close=282.4,
+        sma_fast=283.1,
+        sma_slow=284.0,
+        ema_fast=282.9,
+        ema_slow=283.6,
+        vwap=283.3,
+        rsi=11.4,
+        atr=3.1,
+        plus_di=19.0,
+        minus_di=21.0,
+        adx=24.0,
+        macd=-0.82,
+        macd_signal=-0.51,
+        macd_histogram=-0.31,
+        stochastic_k=8.4,
+        stochastic_d=10.1,
+        relative_volume=1.24,
+        volume_profile=0.21,
+    )
+
+    quality = SignalEngine()._long_entry_quality_assessment(snapshot, None, True)
+
+    assert quality.score > 0.0
+    assert "trend:oversold-reversal" in quality.reasons
+    assert any(reason.startswith("momentum:") for reason in quality.reasons)
+
+
 def test_signal_engine_uses_configured_entry_exit_margin() -> None:
     snapshot = IndicatorSnapshot(
         symbol="AAPL",
