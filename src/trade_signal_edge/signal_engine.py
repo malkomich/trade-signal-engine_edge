@@ -301,8 +301,7 @@ class SignalEngine:
             snapshot.macd is not None
             and snapshot.macd_signal is not None
             and snapshot.macd_histogram is not None
-            and snapshot.macd <= snapshot.macd_signal + BUY_MACD_BEARISH_CROSS_GUARD
-            and snapshot.macd_histogram <= 0
+            and snapshot.macd_histogram <= BUY_MACD_BEARISH_CROSS_GUARD
         ):
             return False
         return True
@@ -324,7 +323,7 @@ class SignalEngine:
                 aligned_votes += 1
 
         if trend_votes == 0:
-            return True
+            return False
         if aligned_votes == 0:
             return False
         return True
