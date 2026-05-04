@@ -377,7 +377,6 @@ def test_signal_engine_scores_oversold_reversal_quality_context() -> None:
     assert "trend:oversold-reversal" in quality.reasons
     assert any(reason.startswith("momentum:") for reason in quality.reasons)
 
-
 def test_signal_engine_relaxes_buy_tier_support_in_oversold_reversal_context() -> None:
     engine = SignalEngine()
 
