@@ -224,12 +224,16 @@ class SignalEngine:
         if state in {TradeState.FLAT, TradeState.REJECTED, TradeState.EXPIRED} and entry_score >= entry_gate:
             if snapshot is None:
                 return SignalAction.HOLD, (), None
+            if not self._buy_momentum_gate(snapshot):
+                return SignalAction.HOLD, (), None
+            if not self._buy_trend_gate(snapshot):
+                return SignalAction.HOLD, (), None
             if quality_assessment is None:
                 quality_assessment = self._long_entry_quality_assessment(snapshot, benchmark)
             quality_score = quality_assessment.score
             if quality_score <= 0 or quality_assessment.supportive_signals < BUY_QUALITY_MIN_SUPPORTING_SIGNALS:
                 return SignalAction.HOLD, (), None
-            effective_margin = max(ENTRY_MARGIN_BASE, self.config.entry_exit_margin * 0.85)
+            effective_margin = max(ENTRY_MARGIN_BASE, self.config.entry_exit_margin * 0.6)
             if strong_exit_pressure:
                 effective_margin += ENTRY_MARGIN_STRONG_EXIT_BONUS
             if exit_score >= entry_score - effective_margin:
@@ -257,10 +261,12 @@ class SignalEngine:
     def is_strong_exit_pressure(self, snapshot: IndicatorSnapshot | None) -> bool:
         if snapshot is None:
             return False
-        if snapshot.rsi is not None and snapshot.stochastic_k is not None:
-            if snapshot.rsi >= 70 and snapshot.stochastic_k >= 80:
+        if snapshot.rsi is not None and snapshot.rsi >= 70:
+            return True
+        if snapshot.stochastic_k is not None and snapshot.stochastic_d is not None:
+            if snapshot.stochastic_k >= 80 and snapshot.stochastic_k >= snapshot.stochastic_d:
                 return True
-            if snapshot.rsi >= 65 and snapshot.stochastic_k >= 85:
+            if snapshot.stochastic_k >= 75 and snapshot.stochastic_k > snapshot.stochastic_d:
                 return True
         if snapshot.vwap is not None and snapshot.macd_histogram is not None:
             if snapshot.close < snapshot.vwap and snapshot.macd_histogram < 0:
@@ -284,14 +290,72 @@ class SignalEngine:
             return True
         return False
 
+    def _buy_momentum_gate(self, snapshot: IndicatorSnapshot) -> bool:
+        if snapshot.rsi is not None and isfinite(snapshot.rsi):
+            if snapshot.rsi >= BUY_RSI_BEARISH_THRESHOLD:
+                return False
+        if snapshot.stochastic_k is not None and snapshot.stochastic_d is not None:
+            if snapshot.stochastic_k >= BUY_STOCHASTIC_OVERBOUGHT_THRESHOLD and snapshot.stochastic_k >= snapshot.stochastic_d:
+                return False
+        if (
+            snapshot.macd is not None
+            and snapshot.macd_signal is not None
+            and snapshot.macd_histogram is not None
+            and snapshot.macd <= snapshot.macd_signal + BUY_MACD_BEARISH_CROSS_GUARD
+            and snapshot.macd_histogram <= 0
+        ):
+            return False
+        return True
+
+    def _buy_trend_gate(self, snapshot: IndicatorSnapshot) -> bool:
+        trend_votes = 0
+        aligned_votes = 0
+        if snapshot.vwap is not None and isfinite(snapshot.vwap):
+            trend_votes += 1
+            if snapshot.close >= snapshot.vwap:
+                aligned_votes += 1
+        if snapshot.ema_fast is not None and snapshot.ema_slow is not None:
+            trend_votes += 1
+            if snapshot.ema_fast >= snapshot.ema_slow:
+                aligned_votes += 1
+        if snapshot.sma_fast is not None and snapshot.sma_slow is not None:
+            trend_votes += 1
+            if snapshot.sma_fast >= snapshot.sma_slow:
+                aligned_votes += 1
+
+        if trend_votes == 0:
+            return True
+        if aligned_votes == 0:
+            return False
+        if (
+            snapshot.vwap is not None
+            and snapshot.ema_fast is not None
+            and snapshot.ema_slow is not None
+            and snapshot.sma_fast is not None
+            and snapshot.sma_slow is not None
+            and snapshot.close < snapshot.vwap
+            and snapshot.ema_fast <= snapshot.ema_slow
+            and snapshot.sma_fast <= snapshot.sma_slow
+        ):
+            return False
+        return True
+
     def _sell_pressure_bias(self, snapshot: IndicatorSnapshot) -> float:
         score = 0.0
         macd_bearish = snapshot.macd_histogram is not None and snapshot.macd_histogram < 0
+        if snapshot.rsi is not None:
+            if snapshot.rsi >= 70:
+                score += 0.35
+            elif snapshot.rsi >= 65:
+                score += 0.2
+        if snapshot.stochastic_k is not None and snapshot.stochastic_d is not None:
+            if snapshot.stochastic_k >= 80 and snapshot.stochastic_k >= snapshot.stochastic_d:
+                score += 0.35
+            elif snapshot.stochastic_k >= 75 and snapshot.stochastic_k > snapshot.stochastic_d:
+                score += 0.2
         if snapshot.rsi is not None and snapshot.stochastic_k is not None:
             if snapshot.rsi >= 70 and snapshot.stochastic_k >= 80:
-                score += 0.45
-            elif snapshot.rsi >= 65 and snapshot.stochastic_k >= 85:
-                score += 0.3
+                score += 0.2
         if snapshot.vwap is not None and macd_bearish and snapshot.close < snapshot.vwap:
             score += 0.2
         if snapshot.bollinger_middle is not None and macd_bearish and snapshot.close < snapshot.bollinger_middle:
@@ -305,6 +369,8 @@ class SignalEngine:
             score += 0.1
         if snapshot.volume_profile is not None and snapshot.volume_profile < 0.15:
             score += 0.1
+        if macd_bearish:
+            score += 0.15
         return _clamp(score / SELL_PRESSURE_MAX_SCORE)
 
     def _opening_session_penalty(self, session_risk: float) -> float:
@@ -334,17 +400,21 @@ class SignalEngine:
     def _rsi_bias(self, rsi: float | None) -> tuple[float, float]:
         if rsi is None or not isfinite(rsi):
             return 0.0, 0.0
-        if rsi >= 72:
+        if rsi >= 70:
             return -1.0, 1.0
-        if rsi >= 65:
-            return 0.3, 0.2
-        if rsi >= 55:
-            return 0.9, -0.3
+        if rsi >= BUY_RSI_BEARISH_THRESHOLD:
+            return -0.9, 0.9
         if rsi >= 45:
+            return -0.1, 0.2
+        if rsi >= BUY_RSI_STRONG_ZONE_MAX:
+            return 0.6, -0.1
+        if rsi >= 25:
+            return 1.0, -0.4
+        if rsi >= 20:
+            return 0.8, -0.2
+        if rsi >= 15:
             return 0.5, 0.0
-        if rsi >= 35:
-            return -0.4, 0.5
-        return -1.0, 0.8
+        return 0.2, 0.2
 
     def _atr_bias(self, atr: float | None, close: float) -> tuple[float, float]:
         if atr is None or close <= 0 or not isfinite(atr):
@@ -375,9 +445,13 @@ class SignalEngine:
             return 0.0, 0.0
         if macd > macd_signal and macd_histogram > 0:
             return 1.0, -0.5
+        if macd > macd_signal and macd_histogram <= 0:
+            return 0.5, 0.1
         if macd < macd_signal and macd_histogram < 0:
             return -1.0, 1.0
-        return 0.2, 0.2
+        if macd < macd_signal and macd_histogram >= 0:
+            return -0.4, 0.6
+        return 0.0, 0.1
 
     def _bollinger_bias(
         self,
@@ -440,13 +514,13 @@ class SignalEngine:
             return 0.0, 0.0
         if stochastic_k < 20 and stochastic_k > stochastic_d:
             return 0.9, -0.3
-        if stochastic_k > 80 and stochastic_k >= stochastic_d:
+        if stochastic_k >= BUY_STOCHASTIC_OVERBOUGHT_THRESHOLD and stochastic_k >= stochastic_d:
             return -1.0, 1.0
-        if stochastic_k > stochastic_d and stochastic_k >= 35:
+        if stochastic_k > stochastic_d and stochastic_k < BUY_STOCHASTIC_OVERBOUGHT_THRESHOLD:
             return 0.5, -0.1
         if stochastic_k < stochastic_d and stochastic_k <= 30:
             return -0.4, 0.6
-        return 0.1, 0.1
+        return 0.0, 0.1
 
     def _benchmark_bias(
         self,

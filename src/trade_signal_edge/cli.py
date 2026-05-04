@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, get_args
 
 from .api_client import ApiSessionClient
-from .config import load_runtime_config
+from .config import ALLOWED_OPERATIONAL_SYMBOLS, load_runtime_config
 from .indicators import IndicatorCalculator
 from .ingestion import ingest_bars, resample_bars
 from .models import SignalAction, SignalConfig, SignalDecision, TIMEFRAME_KEYS, TradeState
@@ -346,6 +346,10 @@ def _run_once(args: argparse.Namespace, runtime) -> dict[str, object]:
     bars = args.bars or runtime.bars
     symbols = list(runtime.symbols)
     if args.symbol is not None:
+        if symbol not in ALLOWED_OPERATIONAL_SYMBOLS:
+            raise ConfigError(
+                f"unsupported symbol {symbol!r}. Supported symbols: {', '.join(ALLOWED_OPERATIONAL_SYMBOLS)}"
+            )
         symbols = [symbol]
 
     indicator_calculator = IndicatorCalculator()

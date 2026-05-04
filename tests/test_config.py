@@ -22,15 +22,15 @@ def test_load_runtime_config_defaults(monkeypatch) -> None:
 
     runtime = load_runtime_config()
 
-    assert runtime.symbol == "AAPL"
-    assert runtime.symbols == ("AAPL", "AMZN", "GOOGL", "META", "MSFT", "NVDA", "PLTR", "TSLA")
+    assert runtime.symbol == "TSLA"
+    assert runtime.symbols == ("TSLA", "NVDA", "META")
     assert runtime.benchmark_symbol == "QQQ"
     assert runtime.session_id == "nasdaq-live"
     assert runtime.bars == 60
     assert runtime.provider == "synthetic"
     assert runtime.api_base_url is None
     assert runtime.session_timezone == "America/New_York"
-    assert runtime.entry_threshold == 0.7
+    assert runtime.entry_threshold == 0.62
     assert runtime.exit_threshold == 0.6
     assert runtime.entry_exit_margin == 0.1
     assert runtime.buy_signal_weights["sma"] == 0.6
@@ -64,7 +64,7 @@ def test_load_runtime_config_defaults(monkeypatch) -> None:
 
 def test_load_runtime_config_reads_environment(monkeypatch) -> None:
     monkeypatch.setenv("EDGE_SYMBOL", "MSFT")
-    monkeypatch.setenv("EDGE_SYMBOLS", "MSFT,NVDA")
+    monkeypatch.setenv("EDGE_SYMBOLS", "MSFT,NVDA,META,TSLA")
     monkeypatch.setenv("EDGE_BARS", "120")
     monkeypatch.setenv("EDGE_PROVIDER", "alpaca")
     monkeypatch.setenv("API_BASE_URL", "https://api.example.com")
@@ -80,15 +80,15 @@ def test_load_runtime_config_reads_environment(monkeypatch) -> None:
 
     runtime = load_runtime_config()
 
-    assert runtime.symbol == "MSFT"
-    assert runtime.symbols == ("MSFT", "NVDA")
+    assert runtime.symbol == "NVDA"
+    assert runtime.symbols == ("NVDA", "META", "TSLA")
     assert runtime.benchmark_symbol == "QQQ"
     assert runtime.session_id == "session-42"
     assert runtime.bars == 120
     assert runtime.provider == "alpaca"
     assert runtime.api_base_url == "https://api.example.com"
     assert runtime.session_timezone == "America/New_York"
-    assert runtime.entry_threshold == 0.7
+    assert runtime.entry_threshold == 0.62
     assert runtime.exit_threshold == 0.6
     assert runtime.entry_exit_margin == 0.1
     assert runtime.alpaca_feed == "sip"
@@ -153,9 +153,9 @@ def test_load_runtime_config_valid_entry_gate_cap(monkeypatch) -> None:
 
 def test_load_runtime_config_legacy_symbol_env_accepts_comma_separated_values(monkeypatch) -> None:
     monkeypatch.delenv("EDGE_SYMBOLS", raising=False)
-    monkeypatch.setenv("EDGE_SYMBOL", "MSFT, NVDA, MSFT")
+    monkeypatch.setenv("EDGE_SYMBOL", "MSFT, NVDA, TSLA, MSFT")
 
     runtime = load_runtime_config()
 
-    assert runtime.symbols == ("MSFT", "NVDA")
-    assert runtime.symbol == "MSFT"
+    assert runtime.symbols == ("NVDA", "TSLA")
+    assert runtime.symbol == "NVDA"

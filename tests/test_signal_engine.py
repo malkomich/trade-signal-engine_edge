@@ -40,7 +40,7 @@ def test_signal_engine_raises_buy_alert_when_trend_is_aligned() -> None:
         ema_fast=101.8,
         ema_slow=100.6,
         vwap=100.8,
-        rsi=62.0,
+        rsi=32.0,
         atr=1.25,
         plus_di=28.0,
         minus_di=14.0,
@@ -55,7 +55,7 @@ def test_signal_engine_raises_buy_alert_when_trend_is_aligned() -> None:
     decision = SignalEngine().evaluate(snapshot, TradeState.FLAT)
 
     assert decision.action is SignalAction.BUY_ALERT
-    assert decision.signal_tier is SignalTier.BALANCED_BUY
+    assert decision.signal_tier is SignalTier.CONVICTION_BUY
     assert decision.entry_score > decision.exit_score
     assert decision.signal_tier is not None
 
@@ -70,7 +70,7 @@ def test_signal_engine_allows_buy_with_a_few_strong_categories() -> None:
         ema_fast=190.7,
         ema_slow=189.9,
         vwap=190.1,
-        rsi=59.0,
+        rsi=34.0,
         atr=1.15,
         plus_di=24.0,
         minus_di=19.0,
@@ -130,6 +130,87 @@ def test_signal_engine_vetoes_entries_when_exit_pressure_is_high() -> None:
     assert decision.reasons == ()
 
 
+def test_signal_engine_rejects_buy_when_rsi_is_overbought() -> None:
+    snapshot = IndicatorSnapshot(
+        symbol="TSLA",
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
+        close=198.0,
+        sma_fast=197.2,
+        sma_slow=196.9,
+        ema_fast=197.4,
+        ema_slow=197.0,
+        vwap=196.8,
+        rsi=72.0,
+        atr=2.1,
+        plus_di=28.0,
+        minus_di=14.0,
+        adx=27.0,
+        macd=0.85,
+        macd_signal=0.72,
+        macd_histogram=0.13,
+        stochastic_k=42.0,
+        stochastic_d=38.0,
+    )
+
+    decision = SignalEngine().evaluate(snapshot, TradeState.FLAT)
+
+    assert decision.action is SignalAction.HOLD
+
+
+def test_signal_engine_rejects_buy_when_stochastic_is_overbought() -> None:
+    snapshot = IndicatorSnapshot(
+        symbol="NVDA",
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
+        close=102.0,
+        sma_fast=101.5,
+        sma_slow=100.2,
+        ema_fast=101.8,
+        ema_slow=100.6,
+        vwap=100.8,
+        rsi=38.0,
+        atr=1.25,
+        plus_di=28.0,
+        minus_di=14.0,
+        adx=26.0,
+        macd=1.1,
+        macd_signal=0.85,
+        macd_histogram=0.25,
+        stochastic_k=84.0,
+        stochastic_d=82.0,
+    )
+
+    decision = SignalEngine().evaluate(snapshot, TradeState.FLAT)
+
+    assert decision.action is SignalAction.HOLD
+
+
+def test_signal_engine_rejects_buy_when_macd_is_bearish() -> None:
+    snapshot = IndicatorSnapshot(
+        symbol="META",
+        timestamp=datetime(2026, 4, 20, 18, 30, tzinfo=timezone.utc),
+        close=292.0,
+        sma_fast=291.5,
+        sma_slow=290.9,
+        ema_fast=291.7,
+        ema_slow=291.3,
+        vwap=291.1,
+        rsi=34.0,
+        atr=1.8,
+        plus_di=22.0,
+        minus_di=20.0,
+        adx=22.0,
+        macd=-0.12,
+        macd_signal=-0.05,
+        macd_histogram=-0.07,
+        stochastic_k=51.0,
+        stochastic_d=47.0,
+    )
+
+    decision = SignalEngine().evaluate(snapshot, TradeState.FLAT)
+
+    assert decision.action is SignalAction.HOLD
+
+
 def test_signal_engine_uses_configured_entry_exit_margin() -> None:
     snapshot = IndicatorSnapshot(
         symbol="AAPL",
@@ -140,7 +221,7 @@ def test_signal_engine_uses_configured_entry_exit_margin() -> None:
         ema_fast=189.7,
         ema_slow=189.1,
         vwap=189.0,
-        rsi=57.0,
+        rsi=34.0,
         atr=1.1,
         plus_di=23.0,
         minus_di=16.0,
@@ -188,7 +269,7 @@ def test_signal_engine_applies_session_risk_to_entry_gate_boundaries(
         ema_fast=101.8,
         ema_slow=100.6,
         vwap=100.8,
-        rsi=62.0,
+        rsi=33.0,
         atr=1.25,
         plus_di=28.0,
         minus_di=14.0,
@@ -256,7 +337,7 @@ def test_signal_engine_preserves_strong_setup_coverage_across_session_penalty() 
         ema_fast=100.7,
         ema_slow=100.4,
         vwap=100.7,
-        rsi=62.0,
+        rsi=33.0,
         atr=1.25,
         plus_di=28.0,
         minus_di=14.0,
@@ -276,7 +357,7 @@ def test_signal_engine_preserves_strong_setup_coverage_across_session_penalty() 
         ema_fast=100.7,
         ema_slow=100.4,
         vwap=100.7,
-        rsi=62.0,
+        rsi=33.0,
         atr=1.25,
         plus_di=28.0,
         minus_di=14.0,
@@ -309,7 +390,7 @@ def test_signal_engine_derives_session_risk_from_snapshot_timestamp() -> None:
         ema_fast=101.8,
         ema_slow=100.6,
         vwap=100.8,
-        rsi=62.0,
+        rsi=33.0,
         atr=1.25,
         plus_di=28.0,
         minus_di=14.0,
@@ -329,7 +410,7 @@ def test_signal_engine_derives_session_risk_from_snapshot_timestamp() -> None:
         ema_fast=101.8,
         ema_slow=100.6,
         vwap=100.8,
-        rsi=62.0,
+        rsi=33.0,
         atr=1.25,
         plus_di=28.0,
         minus_di=14.0,
@@ -414,8 +495,8 @@ def test_signal_engine_biases_are_covered_for_rsi_and_stochastic() -> None:
     engine = SignalEngine()
 
     assert engine._rsi_bias(72.0) == (-1.0, 1.0)
-    assert engine._rsi_bias(60.0) == (0.9, -0.3)
-    assert engine._rsi_bias(40.0) == (-0.4, 0.5)
+    assert engine._rsi_bias(60.0) == (-0.9, 0.9)
+    assert engine._rsi_bias(40.0) == (0.6, -0.1)
     assert engine._stochastic_bias(15.0, 10.0) == (0.9, -0.3)
     assert engine._stochastic_bias(88.0, 85.0) == (-1.0, 1.0)
     assert engine._stochastic_bias(40.0, 35.0) == (0.5, -0.1)
@@ -455,7 +536,7 @@ def test_signal_engine_sell_pressure_bias_normalizes_and_gates_missing_obv() -> 
         ema_fast=199.8,
         ema_slow=198.6,
         vwap=197.5,
-        rsi=58.0,
+        rsi=34.0,
         atr=2.9,
         plus_di=24.0,
         minus_di=16.0,
@@ -589,7 +670,7 @@ def test_signal_engine_accounts_for_benchmark_alignment() -> None:
         ema_fast=103.1,
         ema_slow=102.2,
         vwap=102.4,
-        rsi=58.0,
+        rsi=34.0,
         atr=1.15,
         plus_di=25.0,
         minus_di=16.0,

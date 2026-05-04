@@ -101,7 +101,7 @@ def default_timeframe_weights() -> dict[str, float]:
 
 @dataclass(frozen=True, slots=True)
 class SignalConfig:
-    entry_threshold: float = 0.7
+    entry_threshold: float = 0.62
     exit_threshold: float = 0.6
     entry_exit_margin: float = 0.1
     entry_gate_cap: float = DEFAULT_ENTRY_GATE_CAP
