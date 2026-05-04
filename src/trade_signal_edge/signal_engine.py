@@ -301,7 +301,8 @@ class SignalEngine:
             snapshot.macd is not None
             and snapshot.macd_signal is not None
             and snapshot.macd_histogram is not None
-            and snapshot.macd_histogram <= BUY_MACD_BEARISH_CROSS_GUARD
+            and snapshot.macd <= snapshot.macd_signal + BUY_MACD_BEARISH_CROSS_GUARD
+            and snapshot.macd_histogram <= 0
         ):
             return False
         return True
@@ -323,8 +324,19 @@ class SignalEngine:
                 aligned_votes += 1
 
         if trend_votes == 0:
-            return False
+            return True
         if aligned_votes == 0:
+            return False
+        if (
+            snapshot.vwap is not None
+            and snapshot.ema_fast is not None
+            and snapshot.ema_slow is not None
+            and snapshot.sma_fast is not None
+            and snapshot.sma_slow is not None
+            and snapshot.close < snapshot.vwap
+            and snapshot.ema_fast <= snapshot.ema_slow
+            and snapshot.sma_fast <= snapshot.sma_slow
+        ):
             return False
         return True
 
@@ -340,6 +352,9 @@ class SignalEngine:
             if snapshot.stochastic_k >= 80 and snapshot.stochastic_k >= snapshot.stochastic_d:
                 score += 0.35
             elif snapshot.stochastic_k >= 75 and snapshot.stochastic_k > snapshot.stochastic_d:
+                score += 0.2
+        if snapshot.rsi is not None and snapshot.stochastic_k is not None:
+            if snapshot.rsi >= 70 and snapshot.stochastic_k >= 80:
                 score += 0.2
         if snapshot.vwap is not None and macd_bearish and snapshot.close < snapshot.vwap:
             score += 0.2
