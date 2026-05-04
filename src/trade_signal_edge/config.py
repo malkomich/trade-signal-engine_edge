@@ -6,18 +6,20 @@ from pathlib import Path
 
 from .models import DEFAULT_ENTRY_GATE_CAP, default_signal_weights, default_timeframe_weights
 
+ALLOWED_OPERATIONAL_SYMBOLS: tuple[str, ...] = ("TSLA", "NVDA", "META")
+
 
 @dataclass(slots=True)
 class RuntimeConfig:
-    symbol: str = "AAPL"
-    symbols: tuple[str, ...] = ("AAPL", "AMZN", "GOOGL", "META", "MSFT", "NVDA", "PLTR", "TSLA")
+    symbol: str = "TSLA"
+    symbols: tuple[str, ...] = ALLOWED_OPERATIONAL_SYMBOLS
     benchmark_symbol: str = "QQQ"
     session_id: str = "nasdaq-live"
     bars: int = 60
     provider: str = "synthetic"
     api_base_url: str | None = None
     session_timezone: str = "America/New_York"
-    entry_threshold: float = 0.7
+    entry_threshold: float = 0.62
     exit_threshold: float = 0.6
     entry_exit_margin: float = 0.1
     entry_gate_cap: float = DEFAULT_ENTRY_GATE_CAP
@@ -76,10 +78,10 @@ def _resolve_text_env(name: str, fallback: str) -> str:
 
 
 def _resolve_symbols(defaults: RuntimeConfig) -> tuple[str, ...]:
-    symbols = _parse_symbols(os.getenv("EDGE_SYMBOLS"))
+    symbols = _filter_allowed_symbols(_parse_symbols(os.getenv("EDGE_SYMBOLS")))
     if symbols:
         return symbols
-    legacy_symbols = _parse_symbols(os.getenv("EDGE_SYMBOL"))
+    legacy_symbols = _filter_allowed_symbols(_parse_symbols(os.getenv("EDGE_SYMBOL")))
     if legacy_symbols:
         return legacy_symbols
     return defaults.symbols
@@ -128,3 +130,12 @@ def _parse_symbols(value: str | None) -> tuple[str, ...]:
                 deduped.append(symbol)
         return tuple(deduped)
     return symbols
+
+
+def _filter_allowed_symbols(symbols: tuple[str, ...]) -> tuple[str, ...]:
+    allowed = set(ALLOWED_OPERATIONAL_SYMBOLS)
+    filtered: list[str] = []
+    for symbol in symbols:
+        if symbol in allowed and symbol not in filtered:
+            filtered.append(symbol)
+    return tuple(filtered)

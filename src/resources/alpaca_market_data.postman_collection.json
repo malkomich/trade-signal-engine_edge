@@ -19,12 +19,8 @@
       "value": ""
     },
     {
-      "key": "symbol",
-      "value": "AAPL"
-    },
-    {
       "key": "symbols",
-      "value": "AAPL"
+      "value": "TSLA,NVDA,META"
     },
     {
       "key": "timeframe",

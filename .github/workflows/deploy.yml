@@ -65,7 +65,7 @@ jobs:
 
       - name: Deploy on Raspberry Pi
         env:
-          EDGE_SYMBOLS: AAPL,AMZN,GOOGL,META,MSFT,NVDA,PLTR,TSLA
+          EDGE_SYMBOLS: TSLA,NVDA,META
           EDGE_BENCHMARK_SYMBOL: QQQ
           EDGE_SESSION_ID: nasdaq-live
           EDGE_PROVIDER: alpaca

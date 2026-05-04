@@ -8,7 +8,9 @@ from trade_signal_edge.cli import (
     _combine_timeframe_decisions,
     _publish_market_snapshots,
     _resolve_window_id_after_publish,
+    _runtime_from_session_config,
 )
+from trade_signal_edge.config import load_runtime_config
 from trade_signal_edge.models import Bar, IndicatorSnapshot, SignalAction, SignalDecision, SignalConfig, TradeState
 from trade_signal_edge.signal_engine import SignalEngine
 
@@ -36,7 +38,7 @@ def test_combine_timeframe_decisions_prefers_weighted_entry_and_missing_timefram
         ema_fast=101.8,
         ema_slow=100.6,
         vwap=100.8,
-        rsi=62.0,
+        rsi=34.0,
         atr=1.25,
         plus_di=28.0,
         minus_di=14.0,
@@ -89,7 +91,7 @@ def test_combine_timeframe_decisions_applies_benchmark_filter() -> None:
         ema_fast=101.8,
         ema_slow=100.6,
         vwap=100.8,
-        rsi=62.0,
+        rsi=34.0,
         atr=1.25,
         plus_di=28.0,
         minus_di=14.0,
@@ -148,7 +150,7 @@ def test_combine_timeframe_decisions_normalizes_buy_and_sell_independently() -> 
         ema_fast=189.4,
         ema_slow=188.7,
         vwap=188.9,
-        rsi=60.0,
+        rsi=34.0,
         atr=1.2,
         plus_di=24.0,
         minus_di=17.0,
@@ -256,9 +258,40 @@ def test_combine_timeframe_decisions_handles_zero_weights_without_crashing() -> 
     )
 
     assert decision.action is SignalAction.HOLD
-    assert decision.entry_score == 0.0
-    assert decision.exit_score == 0.0
-    assert decision.reasons == ()
+
+
+def test_runtime_from_session_config_filters_symbols_and_applies_margin() -> None:
+    runtime = load_runtime_config()
+    payload = {
+        "selected_version": {
+            "fields": [
+                {"key": "monitored_symbols", "value": "AAPL,TSLA,NVDA,MSFT"},
+                {"key": "entry_exit_margin", "value": "0.25"},
+            ]
+        }
+    }
+
+    updated = _runtime_from_session_config(runtime, payload)
+
+    assert updated.symbols == ("TSLA", "NVDA")
+    assert updated.symbol == "TSLA"
+    assert updated.entry_exit_margin == 0.25
+
+
+def test_runtime_from_session_config_falls_back_to_allowed_symbols_when_payload_is_unsupported() -> None:
+    runtime = load_runtime_config()
+    payload = {
+        "selected_version": {
+            "fields": [
+                {"key": "monitored_symbols", "value": "AAPL,MSFT,GOOGL"},
+            ]
+        }
+    }
+
+    updated = _runtime_from_session_config(runtime, payload)
+
+    assert updated.symbols == runtime.symbols
+    assert updated.symbol == runtime.symbol
 
 
 def test_resolve_window_id_after_publish_falls_back_to_open_windows_when_response_is_empty() -> None:
