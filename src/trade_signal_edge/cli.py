@@ -52,6 +52,20 @@ SIGNAL_WEIGHT_KEYS = (
 ENTRY_EXECUTION_TIMEFRAMES = ("1m", "5m")
 ENTRY_CONFIRMATION_TIMEFRAMES = ("10m", "15m")
 ENTRY_CONTEXT_TIMEFRAMES = ("30m", "60m")
+REVERSAL_ENTRY_EXECUTION_WEIGHT = 0.65
+REVERSAL_ENTRY_CONFIRMATION_WEIGHT = 0.25
+REVERSAL_ENTRY_CONTEXT_WEIGHT = 0.10
+STANDARD_ENTRY_EXECUTION_WEIGHT = 0.5
+STANDARD_ENTRY_CONFIRMATION_WEIGHT = 0.3
+STANDARD_ENTRY_CONTEXT_WEIGHT = 0.2
+REVERSAL_EXIT_EXECUTION_WEIGHT = 0.7
+REVERSAL_EXIT_CONFIRMATION_WEIGHT = 0.2
+REVERSAL_EXIT_CONTEXT_WEIGHT = 0.1
+STANDARD_EXIT_EXECUTION_WEIGHT = 0.5
+STANDARD_EXIT_CONFIRMATION_WEIGHT = 0.3
+STANDARD_EXIT_CONTEXT_WEIGHT = 0.2
+REVERSAL_EXECUTION_FLOOR_RATIO = 0.75
+REVERSAL_EXIT_CONTEXT_CAP_FLOOR = 0.55
 
 
 def _parse_int_env(name: str, default: int) -> int:
@@ -702,23 +716,23 @@ def _aggregate_entry_score(
     confirmation = _weighted_timeframe_score(timeframe_decisions, timeframe_weights, ENTRY_CONFIRMATION_TIMEFRAMES, "entry")
     context = _weighted_timeframe_score(timeframe_decisions, timeframe_weights, ENTRY_CONTEXT_TIMEFRAMES, "entry")
     if bullish_reversal_context:
-        execution_floor = (execution or 0.0) * 0.75
-        confirmation_floor = confirmation if confirmation is not None and confirmation > 0 else execution_floor
+        execution_floor = (execution or 0.0) * REVERSAL_EXECUTION_FLOOR_RATIO
+        confirmation_floor = max(confirmation, execution_floor) if confirmation is not None else execution_floor
         context_floor = context if context is not None else confirmation_floor
         protected_context = max(context_floor, confirmation_floor)
         return round(
             _blend_scores(
-                (execution, 0.65),
-                (confirmation, 0.25),
-                (protected_context, 0.10),
+                (execution, REVERSAL_ENTRY_EXECUTION_WEIGHT),
+                (confirmation, REVERSAL_ENTRY_CONFIRMATION_WEIGHT),
+                (protected_context, REVERSAL_ENTRY_CONTEXT_WEIGHT),
             ),
             4,
         )
     return round(
         _blend_scores(
-            (execution, 0.5),
-            (confirmation, 0.3),
-            (context, 0.2),
+            (execution, STANDARD_ENTRY_EXECUTION_WEIGHT),
+            (confirmation, STANDARD_ENTRY_CONFIRMATION_WEIGHT),
+            (context, STANDARD_ENTRY_CONTEXT_WEIGHT),
         ),
         4,
     )
@@ -733,23 +747,23 @@ def _aggregate_exit_score(
     confirmation = _weighted_timeframe_score(timeframe_decisions, timeframe_weights, ENTRY_CONFIRMATION_TIMEFRAMES, "exit")
     context = _weighted_timeframe_score(timeframe_decisions, timeframe_weights, ENTRY_CONTEXT_TIMEFRAMES, "exit")
     if bullish_reversal_context:
-        execution_cap = execution if execution is not None else 0.55
+        execution_cap = execution if execution is not None else REVERSAL_EXIT_CONTEXT_CAP_FLOOR
         confirmation_cap = confirmation if confirmation is not None else execution_cap
-        context_cap = context if context is not None else max(execution_cap, confirmation_cap, 0.55)
-        dampened_context = min(context_cap, max(execution_cap, confirmation_cap, 0.55))
+        context_cap = context if context is not None else max(execution_cap, confirmation_cap, REVERSAL_EXIT_CONTEXT_CAP_FLOOR)
+        dampened_context = min(context_cap, max(execution_cap, confirmation_cap, REVERSAL_EXIT_CONTEXT_CAP_FLOOR))
         return round(
             _blend_scores(
-                (execution, 0.7),
-                (confirmation, 0.2),
-                (dampened_context, 0.1),
+                (execution, REVERSAL_EXIT_EXECUTION_WEIGHT),
+                (confirmation, REVERSAL_EXIT_CONFIRMATION_WEIGHT),
+                (dampened_context, REVERSAL_EXIT_CONTEXT_WEIGHT),
             ),
             4,
         )
     return round(
         _blend_scores(
-            (execution, 0.5),
-            (confirmation, 0.3),
-            (context, 0.2),
+            (execution, STANDARD_EXIT_EXECUTION_WEIGHT),
+            (confirmation, STANDARD_EXIT_CONFIRMATION_WEIGHT),
+            (context, STANDARD_EXIT_CONTEXT_WEIGHT),
         ),
         4,
     )
